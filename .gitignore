@@ -1,0 +1,5 @@
+# Local build output (CMake recreates it on each PC)
+build/
+
+# Compiler tools installed by install_tools.py (keep them out of git)
+y/
