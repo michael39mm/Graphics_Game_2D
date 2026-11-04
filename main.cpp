@@ -5,6 +5,7 @@
 #include <vector>
 #include <cstdlib>
 #include <cmath>
+#include <string>
 // el wa2t elly 3ada men a5er frame (bel sec)
 float deltaTime = 0.0f;
 float lastFrameTime = 0.0f;
@@ -87,12 +88,88 @@ float JUMP_HEIGHT = 0.08f;
 // Law el masafa benhom a2al men keda yeb2o "5abato" f ba3d
 float TOUCH_DISTANCE = 0.07f;
 
-// TEST: kol kam sanya yenzel enemy (el waves ba3den hatsheel da)
-float enemySpawnTimer = 0.0f;
-float ENEMY_SPAWN_TIME = 4.0f;
+// ===== El waves =====
+
+// 3add el enemies fe kol wave (1: easy bas, 2: easy + medium, 3: el talata)
+int WAVE_SIZE[3] = {3, 5, 10};
+
+// Kol kam sanya yenzel enemy fe kol wave (el wave el a5eera asra3)
+float WAVE_SPAWN_TIME[3] = {5.0f, 4.0f, 3.0f};
+
+// El ra7a ben kol wave w el tanya (bel sanya)
+float WAVE_BREAK_TIME = 4.0f;
+
+int currentWave = 0;           // 0, 1, 2
+int enemiesSpawnedInWave = 0;  // nazal kam enemy fel wave di le7ad delwa2ty
+float waveSpawnTimer = 3.0f;   // awel enemy byenzel ba3d 2 sanya
+float waveBreakTimer = 0.0f;
+bool allWavesDone = false;     // el 3 waves 5elso w kol el enemies matet
+
+// ===== 7alet el game =====
+const int STATE_PLAYING = 0;
+const int STATE_WON     = 1;
+const int STATE_LOST    = 2;
+const int STATE_MENU    = 3;  // el main menu
+const int STATE_PAUSED  = 4;  // dosna Esc
+
+// El game bybda2 fel main menu
+int gameState = STATE_MENU;
+
+// Zorar el win/lose screen (Restart fo2, Main Menu ta7t)
+float END_BUTTON_Y[2] = {-0.1f, -0.27f};
+
+// 7agm kol zarayer el menus
+float END_BUTTON_W = 0.56f;
+float END_BUTTON_H = 0.12f;
+
+// Zarayer el main menu (Start, Exit)
+float MAIN_MENU_BUTTON_Y[2] = {-0.05f, -0.23f};
+
+// Zarayer el pause menu (Continue, Restart, Main Menu)
+float PAUSE_BUTTON_Y[3] = {0.02f, -0.15f, -0.32f};
 
 // Law enemy wesel lel home base
 bool gameLost = false;
+
+// ===== Coins w el cards =====
+
+// El coins elly bnebda2 beeha (30 = 3 melee bel zabt) - 500 lel testing bas
+int START_COINS = 500;
+
+// El coins elly ma3ana delwa2ty
+int coins = START_COINS;
+
+// Se3r kol player
+int MELEE_COST   = 10;
+int RANGED_COST  = 20;
+int DEFENSE_COST = 30;
+
+// Awel player lazem yeb2a melee - ba3d keda kol el cards maftoo7a law el coins kfaya
+bool firstMeleePlaced = false;
+
+// Dosna 3ala card el defense w mestaneyeen click 3ala makan fel lane
+bool placingDefense = false;
+
+// Kol enemy by2a3 kam coin lama ymoot
+int EASY_DROP   = 10;
+int MEDIUM_DROP = 15;
+int HARD_DROP   = 20;
+
+// Kart el coin elly wa2e3 3al ard
+struct Coin {
+    int lane;
+    float x;
+    int value;
+};
+
+// Kol el coins elly wa2e3a fel shawa3
+std::vector<Coin> droppedCoins;
+
+// Amaken el cards fo2 3al shmal (el x bta3 kol card bel tarteeb: melee, ranged, defense)
+float CARD_X[3] = {-0.82f, -0.62f, -0.42f};
+float CARD_Y = 0.86f;
+float CARD_W = 0.16f;
+float CARD_H = 0.22f;
 
 // Anwa3 el talakat (men anhy ertefa3)
 const int SHOT_MIDDLE = 0;  // talka el player el ranged
@@ -194,9 +271,103 @@ int getMouseLane() {
     return laneAtY(y);
 }
 
+// Makan el mouse b OpenGL (-1 le 1)
+void getMousePosition(float* x, float* y) {
+    double mouseX, mouseY;
+    glfwGetCursorPos(Window, &mouseX, &mouseY);
+
+    int windowWidth, windowHeight;
+    glfwGetWindowSize(Window, &windowWidth, &windowHeight);
+
+    *x = (float)(mouseX / windowWidth) * 2.0f - 1.0f;
+    *y = 1.0f - (float)(mouseY / windowHeight) * 2.0f;
+}
+
+// El mouse 3ala anhy card (-1 law mafeesh)
+int cardAt(float x, float y) {
+    for (int i = 0; i < 3; i++) {
+        if (x >= CARD_X[i] - CARD_W / 2.0f && x <= CARD_X[i] + CARD_W / 2.0f &&
+            y >= CARD_Y - CARD_H / 2.0f && y <= CARD_Y + CARD_H / 2.0f)
+            return i;
+    }
+
+    return -1;
+}
+
+void buyPlayers(int type);
+void restartGame();
+int endButtonAt(float x, float y);
+int buttonAt(float x, float y, float* buttonY, int count);
+void startGame();
+void goToMainMenu();
+void placeDefense(int lane, float x);
+
 // Lama nedoos click
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
     if (button == GLFW_MOUSE_BUTTON_LEFT && action == GLFW_PRESS) {
+        // Click 3ala card: nesht3ry el player da fe kol el lanes el selected
+        float mx, my;
+        getMousePosition(&mx, &my);
+
+        // Fel main menu: Start aw Exit
+        if (gameState == STATE_MENU) {
+            int button = buttonAt(mx, my, MAIN_MENU_BUTTON_Y, 2);
+
+            if (button == 0)
+                startGame();
+
+            if (button == 1)
+                glfwSetWindowShouldClose(Window, true);
+
+            return;
+        }
+
+        // Fel pause: Continue, Restart, Main Menu
+        if (gameState == STATE_PAUSED) {
+            int button = buttonAt(mx, my, PAUSE_BUTTON_Y, 3);
+
+            if (button == 0)
+                gameState = STATE_PLAYING;
+
+            if (button == 1)
+                restartGame();
+
+            if (button == 2)
+                goToMainMenu();
+
+            return;
+        }
+
+        // El game 5eles (win aw lose): Restart aw Main Menu
+        if (gameState == STATE_WON || gameState == STATE_LOST) {
+            int button = endButtonAt(mx, my);
+
+            if (button == 0)
+                restartGame();
+
+            if (button == 1)
+                goToMainMenu();
+
+            return;
+        }
+
+        int card = cardAt(mx, my);
+        if (card != -1) {
+            buyPlayers(card);
+            return;
+        }
+
+        // Mestaneyeen makan el defense: el click da byeb2a makano
+        // (law el click barra el shawa3 byelghy)
+        if (placingDefense) {
+            int defenseLane = getMouseLane();
+            if (defenseLane != -1)
+                placeDefense(defenseLane, mx);
+
+            placingDefense = false;
+            return;
+        }
+
         int lane = getMouseLane();
 
         // Click 3ala lane: law selected teb2a la2, law la2 teb2a selected
@@ -208,22 +379,24 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
 void spawnPlayer(int type, int lane);
 void spawnEnemy(int type, int lane);
 
-// TEST: 1/2/3 = player fe kol el lanes el selected, E = enemy random
+// W/S = natta w duck | Esc = pause
 void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods) {
     if (action != GLFW_PRESS)
         return;
 
-    for (int i = 0; i < 4; i++) {
-        if (!selectedLanes[i])
-            continue;
+    // Esc: pause law bnel3ab, w continue law fel pause
+    if (key == GLFW_KEY_ESCAPE) {
+        if (gameState == STATE_PLAYING)
+            gameState = STATE_PAUSED;
+        else if (gameState == STATE_PAUSED)
+            gameState = STATE_PLAYING;
 
-        if (key == GLFW_KEY_1) spawnPlayer(PLAYER_MELEE, i);
-        if (key == GLFW_KEY_2) spawnPlayer(PLAYER_RANGED, i);
-        if (key == GLFW_KEY_3) spawnPlayer(PLAYER_DEFENSE, i);
+        return;
     }
 
-    if (key == GLFW_KEY_E)
-        spawnEnemy(rand() % 3, rand() % 4);
+    // Mesh bnel3ab (menu, pause, win, lose): mafeesh natta wala duck
+    if (gameState != STATE_PLAYING)
+        return;
 
     // W / Up = natta, S / Down = duck (lel players fe kol el lanes el selected)
     bool jumpKey = (key == GLFW_KEY_W || key == GLFW_KEY_UP);
@@ -574,6 +747,88 @@ void spawnEnemy(int type, int lane) {
     enemies.push_back(e);
 }
 
+// El card da unlocked wala la2
+// (el melee daymann maftoo7 - el ba2y yetfete7o ba3d awel melee)
+bool isUnlocked(int type) {
+    if (type == PLAYER_MELEE)
+        return true;
+
+    return firstMeleePlaced;
+}
+
+// Se3r el player
+int playerCost(int type) {
+    if (type == PLAYER_MELEE)
+        return MELEE_COST;
+
+    if (type == PLAYER_RANGED)
+        return RANGED_COST;
+
+    return DEFENSE_COST;
+}
+
+// Nesht3ry player wa7ed fe kol lane selected (law el card unlocked w ma3ana coins)
+void buyPlayers(int type) {
+    if (!isUnlocked(type) || coins < playerCost(type))
+        return;
+
+    // El defense: mesh bnet7at fel lanes el selected - bnestana click 3ala makan
+    // (click tany 3ala nafs el card byelghy)
+    if (type == PLAYER_DEFENSE) {
+        placingDefense = !placingDefense;
+        return;
+    }
+
+    for (int i = 0; i < 4; i++) {
+        if (!selectedLanes[i])
+            continue;
+
+        // Bnetshayek kol mara 3ashan el coins bte2el w momken el card ye2fel
+        if (!isUnlocked(type) || coins < playerCost(type))
+            return;
+
+        coins -= playerCost(type);
+        spawnPlayer(type, i);
+
+        if (type == PLAYER_MELEE)
+            firstMeleePlaced = true;
+    }
+}
+
+// Ne7ot defense fe el lane da fe makan el click bel zabt
+void placeDefense(int lane, float x) {
+    if (!isUnlocked(PLAYER_DEFENSE) || coins < DEFENSE_COST)
+        return;
+
+    // Mayetla3sh barra el shar3
+    if (x < LANE_LEFT + 0.05f)
+        x = LANE_LEFT + 0.05f;
+    if (x > LANE_RIGHT - 0.05f)
+        x = LANE_RIGHT - 0.05f;
+
+    coins -= DEFENSE_COST;
+    spawnPlayer(PLAYER_DEFENSE, lane);
+
+    // spawnPlayer bey7oto fel awel - n7oto fe makan el click
+    players.back().x = x;
+}
+
+// El enemy mat: yo2a3 coin makano
+void dropCoin(Enemy e) {
+    Coin c;
+    c.lane = e.lane;
+    c.x = e.x;
+
+    if (e.type == ENEMY_EASY)
+        c.value = EASY_DROP;
+    else if (e.type == ENEMY_MEDIUM)
+        c.value = MEDIUM_DROP;
+    else
+        c.value = HARD_DROP;
+
+    droppedCoins.push_back(c);
+}
+
 // Nshel ay 7ad health bta3o 5eles
 // (bnemshy men el a5er lel awel 3ashan el erase maybawazsh el 3ad)
 void removeDeadEntities() {
@@ -583,8 +838,10 @@ void removeDeadEntities() {
     }
 
     for (int i = (int)enemies.size() - 1; i >= 0; i--) {
-        if (enemies[i].health <= 0)
+        if (enemies[i].health <= 0) {
+            dropCoin(enemies[i]);
             enemies.erase(enemies.begin() + i);
+        }
     }
 }
 
@@ -608,6 +865,21 @@ void drawHealthBar(float x, float y, int health, int maxHealth,
                   r, g, b);
 }
 
+// Shakl kol no3 player (3ard, tool, lon) - bnesta5demha fel game w fel cards
+void getPlayerLook(int type, float* w, float* h, float* r, float* g, float* b) {
+    *w = 0.06f; *h = 0.16f;
+    *r = 0.2f; *g = 0.8f; *b = 0.3f;
+
+    if (type == PLAYER_RANGED) {
+        *w = 0.05f; *h = 0.18f;
+        *r = 0.2f; *g = 0.6f; *b = 1.0f;
+    }
+    else if (type == PLAYER_DEFENSE) {
+        *w = 0.09f; *h = 0.22f;
+        *r = 0.6f; *g = 0.6f; *b = 0.6f;
+    }
+}
+
 // Rasm mo2akat lel player (el shakl el 7a2e2y ba3den)
 void drawPlayer(Player p) {
     // Law nate: byetla3 w yenzel (sin bta3mel 2os)
@@ -623,17 +895,8 @@ void drawPlayer(Player p) {
     setRed((1.0f - (float)p.health / p.maxHealth) * 0.8f);
 
     // Shakl kol no3 (3ard, tool, lon)
-    float w = 0.06f, h = 0.16f;
-    float r = 0.2f, g = 0.8f, b = 0.3f;
-
-    if (p.type == PLAYER_RANGED) {
-        w = 0.05f; h = 0.18f;
-        r = 0.2f; g = 0.6f; b = 1.0f;
-    }
-    else if (p.type == PLAYER_DEFENSE) {
-        w = 0.09f; h = 0.22f;
-        r = 0.6f; g = 0.6f; b = 0.6f;
-    }
+    float w, h, r, g, b;
+    getPlayerLook(p.type, &w, &h, &r, &g, &b);
 
     // Law 3amel duck: el tool yeb2a nos w regleeh fe nafs el makan
     float drawH = h;
@@ -740,12 +1003,13 @@ void updateEnemies() {
         else
             enemies[i].x -= ENEMY_SPEED * deltaTime;
 
-        // Wesel lel home base: 5esrna (step 13 hay3mel el ba2y)
+        // Wesel lel home base: 5esrna
         if (enemies[i].x < LANE_LEFT) {
             enemies[i].x = LANE_LEFT;
 
             if (!gameLost) {
                 gameLost = true;
+                gameState = STATE_LOST;
                 std::cout << "Enemy wesel lel home base!\n";
             }
         }
@@ -942,14 +1206,455 @@ void drawProjectile(Projectile s) {
     setOffset(0.0f, 0.0f);
 }
 
-// TEST: kol ENEMY_SPAWN_TIME sanya enemy random fe lane random
+// No3 el enemy rakam i fel wave (bnlef 3al anwa3 3ashan yeb2a fe mix akeed)
+int waveEnemyType(int wave, int i) {
+    if (wave == 0)
+        return ENEMY_EASY;            // wave 1: easy bas
 
-void updateEnemySpawning() {
-    enemySpawnTimer += deltaTime;
+    if (wave == 1)
+        return i % 2;                 // wave 2: easy, medium, easy, ...
 
-    if (enemySpawnTimer >= ENEMY_SPAWN_TIME) {
-        enemySpawnTimer -= ENEMY_SPAWN_TIME;
-        spawnEnemy(rand() % 3, rand() % 4);
+    return i % 3;                     // wave 3: easy, medium, hard, ...
+}
+
+// El waves: nenazel el enemies wa7ed wa7ed, w lama el wave te5las
+// (kolohom nezlo) nestana le7ad ma n5alas 3alehom, ba3den el wave elly ba3daha
+void updateWaves() {
+    if (allWavesDone)
+        return;
+
+    // Lessa fe enemies mnazalteesh fel wave di
+    if (enemiesSpawnedInWave < WAVE_SIZE[currentWave]) {
+        waveSpawnTimer += deltaTime;
+
+        if (waveSpawnTimer >= WAVE_SPAWN_TIME[currentWave]) {
+            waveSpawnTimer = 0.0f;
+            spawnEnemy(waveEnemyType(currentWave, enemiesSpawnedInWave), rand() % 4);
+            enemiesSpawnedInWave++;
+        }
+
+        return;
+    }
+
+    // El wave 5elset (kolohom nezlo) - lazem n5alas 3ala elly fadel 3al shasha
+    if (!enemies.empty())
+        return;
+
+    // Kanet el wave el a5eera: kesebna
+    if (currentWave == 2) {
+        allWavesDone = true;
+        gameState = STATE_WON;
+        std::cout << "Kol el waves 5elset - kesebt!\n";
+        return;
+    }
+
+    // Ra7a soghayara w ba3den el wave elly ba3daha
+    waveBreakTimer += deltaTime;
+
+    if (waveBreakTimer >= WAVE_BREAK_TIME) {
+        currentWave++;
+        enemiesSpawnedInWave = 0;
+        waveBreakTimer = 0.0f;
+
+        // Awel enemy fel wave el gdeeda byenzel 3ala tool
+        waveSpawnTimer = WAVE_SPAWN_TIME[currentWave];
+    }
+}
+
+
+// El players yelmo el coins elly 3al ard
+void updateCoins() {
+    for (int i = (int)droppedCoins.size() - 1; i >= 0; i--) {
+        for (int j = 0; j < (int)players.size(); j++) {
+            if (players[j].lane == droppedCoins[i].lane &&
+                isTouching(players[j].x, droppedCoins[i].x)) {
+                coins += droppedCoins[i].value;
+                droppedCoins.erase(droppedCoins.begin() + i);
+                break;
+            }
+        }
+    }
+}
+
+// Shakl el coin (dahaby gham2 bara, asfar gowa, no2ta beyda)
+void drawCoinIcon(float x, float y, float size) {
+    drawRectangle(size, size, x, y, 0.75f, 0.5f, 0.05f);
+    drawRectangle(size * 0.7f, size * 0.7f, x, y, 1.0f, 0.85f, 0.2f);
+    drawRectangle(size * 0.2f, size * 0.2f, x - size * 0.15f, y + size * 0.15f,
+                  1.0f, 1.0f, 0.8f);
+}
+
+// Kol segment fel ra2am (a b c d e f g) shaghal wala la2 - zay sa3a digital
+int DIGIT_SEGMENTS[10][7] = {
+    {1, 1, 1, 1, 1, 1, 0},  // 0
+    {0, 1, 1, 0, 0, 0, 0},  // 1
+    {1, 1, 0, 1, 1, 0, 1},  // 2
+    {1, 1, 1, 1, 0, 0, 1},  // 3
+    {0, 1, 1, 0, 0, 1, 1},  // 4
+    {1, 0, 1, 1, 0, 1, 1},  // 5
+    {1, 0, 1, 1, 1, 1, 1},  // 6
+    {1, 1, 1, 0, 0, 0, 0},  // 7
+    {1, 1, 1, 1, 1, 1, 1},  // 8
+    {1, 1, 1, 1, 0, 1, 1}   // 9
+};
+
+// Nersem ra2am wa7ed (0-9) men 7 rectangles
+void drawDigit(int d, float x, float y, float size, float r, float g, float b) {
+    float w = size * 0.55f;
+    float t = size * 0.15f;
+    float half = size / 2.0f;
+
+    // a: fo2
+    if (DIGIT_SEGMENTS[d][0]) drawRectangle(w, t, x, y + half - t / 2.0f, r, g, b);
+    // b: fo2 yemeen
+    if (DIGIT_SEGMENTS[d][1]) drawRectangle(t, half, x + w / 2.0f - t / 2.0f, y + size / 4.0f, r, g, b);
+    // c: ta7t yemeen
+    if (DIGIT_SEGMENTS[d][2]) drawRectangle(t, half, x + w / 2.0f - t / 2.0f, y - size / 4.0f, r, g, b);
+    // d: ta7t
+    if (DIGIT_SEGMENTS[d][3]) drawRectangle(w, t, x, y - half + t / 2.0f, r, g, b);
+    // e: ta7t shmal
+    if (DIGIT_SEGMENTS[d][4]) drawRectangle(t, half, x - w / 2.0f + t / 2.0f, y - size / 4.0f, r, g, b);
+    // f: fo2 shmal
+    if (DIGIT_SEGMENTS[d][5]) drawRectangle(t, half, x - w / 2.0f + t / 2.0f, y + size / 4.0f, r, g, b);
+    // g: el nos
+    if (DIGIT_SEGMENTS[d][6]) drawRectangle(w, t, x, y, r, g, b);
+}
+
+// Nersem rakam kamel (masalan 120) - x = awel ra2am men el shmal
+void drawNumber(int value, float x, float y, float size, float r, float g, float b) {
+    std::string text = std::to_string(value);
+
+    for (int i = 0; i < (int)text.size(); i++)
+        drawDigit(text[i] - '0', x + i * size * 0.75f, y, size, r, g, b);
+}
+
+// 3add el coins fo2 3al yemeen
+void drawCoinCounter() {
+    // Panel gham2 wara
+    drawRectangle(0.36f, 0.14f, 0.74f, CARD_Y, 0.12f, 0.12f, 0.15f);
+
+    drawCoinIcon(0.62f, CARD_Y, 0.07f);
+    drawNumber(coins, 0.7f, CARD_Y, 0.07f, 1.0f, 0.85f, 0.2f);
+}
+
+// Rasm 7etta men el card (law locked byeb2a ramady)
+void drawCardPart(float w, float h, float x, float y,
+                  float r, float g, float b, bool locked) {
+    if (locked) {
+        float gray = (0.3f * r + 0.59f * g + 0.11f * b) * 0.7f;
+        r = gray; g = gray; b = gray;
+    }
+
+    drawRectangle(w, h, x, y, r, g, b);
+}
+
+// Law mestaneyeen makan el defense: nwareeh hayeb2a fein ta7t el mouse
+void drawDefensePreview() {
+    if (!placingDefense)
+        return;
+
+    float mx, my;
+    getMousePosition(&mx, &my);
+
+    int lane = getMouseLane();
+    if (lane == -1)
+        return;
+
+    float w, h, r, g, b;
+    getPlayerLook(PLAYER_DEFENSE, &w, &h, &r, &g, &b);
+
+    // Bervaz asfar w el defense fate7 shwaya (lessa mat7atsh)
+    drawRectangle(w + 0.015f, h + 0.015f, mx, LANE_Y[lane], 1.0f, 0.85f, 0.1f);
+    drawRectangle(w, h, mx, LANE_Y[lane], 0.8f, 0.8f, 0.8f);
+}
+
+// ===== El font: kol 7arf 5 x 7 morab3at ('#' = malyan) =====
+const char* FONT_LETTERS[26][7] = {
+    {".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"},  // A
+    {"####.", "#...#", "#...#", "####.", "#...#", "#...#", "####."},  // B
+    {".###.", "#...#", "#....", "#....", "#....", "#...#", ".###."},  // C
+    {"####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####."},  // D
+    {"#####", "#....", "#....", "####.", "#....", "#....", "#####"},  // E
+    {"#####", "#....", "#....", "####.", "#....", "#....", "#...."},  // F
+    {".###.", "#...#", "#....", "#.###", "#...#", "#...#", ".###."},  // G
+    {"#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"},  // H
+    {".###.", "..#..", "..#..", "..#..", "..#..", "..#..", ".###."},  // I
+    {"..###", "...#.", "...#.", "...#.", "...#.", "#..#.", ".##.."},  // J
+    {"#...#", "#..#.", "#.#..", "##...", "#.#..", "#..#.", "#...#"},  // K
+    {"#....", "#....", "#....", "#....", "#....", "#....", "#####"},  // L
+    {"#...#", "##.##", "#.#.#", "#.#.#", "#...#", "#...#", "#...#"},  // M
+    {"#...#", "##..#", "#.#.#", "#..##", "#...#", "#...#", "#...#"},  // N
+    {".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."},  // O
+    {"####.", "#...#", "#...#", "####.", "#....", "#....", "#...."},  // P
+    {".###.", "#...#", "#...#", "#...#", "#.#.#", "#..#.", ".##.#"},  // Q
+    {"####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#"},  // R
+    {".####", "#....", "#....", ".###.", "....#", "....#", "####."},  // S
+    {"#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."},  // T
+    {"#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."},  // U
+    {"#...#", "#...#", "#...#", "#...#", "#...#", ".#.#.", "..#.."},  // V
+    {"#...#", "#...#", "#...#", "#.#.#", "#.#.#", "#.#.#", ".#.#."},  // W
+    {"#...#", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "#...#"},  // X
+    {"#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#.."},  // Y
+    {"#####", "....#", "...#.", "..#..", ".#...", "#....", "#####"},  // Z
+};
+
+const char* FONT_DIGITS[10][7] = {
+    {".###.", "#...#", "#..##", "#.#.#", "##..#", "#...#", ".###."},  // 0
+    {"..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".###."},  // 1
+    {".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"},  // 2
+    {"####.", "....#", "....#", ".###.", "....#", "....#", "####."},  // 3
+    {"...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."},  // 4
+    {"#####", "#....", "####.", "....#", "....#", "#...#", ".###."},  // 5
+    {".###.", "#....", "#....", "####.", "#...#", "#...#", ".###."},  // 6
+    {"#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#..."},  // 7
+    {".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."},  // 8
+    {".###.", "#...#", "#...#", ".####", "....#", "....#", ".###."},  // 9
+};
+
+const char* FONT_EXCLAIM[7] = {"..#..", "..#..", "..#..", "..#..", "..#..", ".....", "..#.."};
+
+// Nersem kelma fel nos 3and centerX (pixel = 7agm el morab3 el soghayar)
+void drawText(std::string text, float centerX, float y, float pixel,
+                float r, float g, float b) {
+    // El morab3 yeb2a morab3 bel zabt 7atta law el shasha 3areeda
+    float pixelX = pixel;
+    float pixelY = pixel * (float)width / (float)height;
+
+    // Kol 7arf 5 morab3at + 1 fady ben el 7oroof
+    float totalWidth = text.size() * 6.0f * pixelX - pixelX;
+    float startX = centerX - totalWidth / 2.0f;
+
+    for (int i = 0; i < (int)text.size(); i++) {
+        char c = text[i];
+        const char** rows = nullptr;
+
+        if (c >= 'A' && c <= 'Z')
+            rows = FONT_LETTERS[c - 'A'];
+        else if (c >= '0' && c <= '9')
+            rows = FONT_DIGITS[c - '0'];
+        else if (c == '!')
+            rows = FONT_EXCLAIM;
+
+        // Masafa (aw 7arf mesh 3andena): nseebo fady
+        if (rows == nullptr)
+            continue;
+
+        float letterX = startX + i * 6.0f * pixelX;
+
+        for (int row = 0; row < 7; row++) {
+            for (int col = 0; col < 5; col++) {
+                if (rows[row][col] != '#')
+                    continue;
+
+                // Row 0 fo2 - row 6 ta7t (el nos = row 3)
+                drawRectangle(pixelX, pixelY,
+                              letterX + col * pixelX + pixelX / 2.0f,
+                              y + (3 - row) * pixelY,
+                              r, g, b);
+            }
+        }
+    }
+}
+
+// El mouse 3ala anhy zorar (-1 law mafeesh) - lay menu
+// (el zarayer kolohom fel nos, w buttonY feeh el y bta3 kol wa7ed)
+int buttonAt(float x, float y, float* buttonY, int count) {
+    for (int i = 0; i < count; i++) {
+        if (x >= -END_BUTTON_W / 2.0f && x <= END_BUTTON_W / 2.0f &&
+            y >= buttonY[i] - END_BUTTON_H / 2.0f &&
+            y <= buttonY[i] + END_BUTTON_H / 2.0f)
+            return i;
+    }
+
+    return -1;
+}
+
+// El mouse 3ala anhy zorar fel win/lose screen (-1 law mafeesh)
+int endButtonAt(float x, float y) {
+    return buttonAt(x, y, END_BUTTON_Y, 2);
+}
+
+// Nersem zarayer menu (bytnawaro asfar lama el mouse 3alehom)
+void drawButtons(std::string* labels, float* buttonY, int count) {
+    float mx, my;
+    getMousePosition(&mx, &my);
+    int hovered = buttonAt(mx, my, buttonY, count);
+
+    for (int i = 0; i < count; i++) {
+        float r = 0.25f, g = 0.25f, b = 0.3f;
+        if (hovered == i) {
+            r = 0.95f; g = 0.8f; b = 0.2f;
+        }
+
+        drawRectangle(END_BUTTON_W, END_BUTTON_H, 0.0f, buttonY[i], r, g, b);
+        drawText(labels[i], 0.0f, buttonY[i], 0.009f, 1.0f, 1.0f, 1.0f);
+    }
+}
+
+// Nrga3 kol 7aga zay awel el game
+void restartGame() {
+    players.clear();
+    enemies.clear();
+    projectiles.clear();
+    droppedCoins.clear();
+
+    coins = START_COINS;
+    firstMeleePlaced = false;
+    placingDefense = false;
+
+    for (int i = 0; i < 4; i++)
+        selectedLanes[i] = false;
+
+    currentWave = 0;
+    enemiesSpawnedInWave = 0;
+    waveSpawnTimer = 3.0f;
+    waveBreakTimer = 0.0f;
+    allWavesDone = false;
+
+    gameLost = false;
+    gameState = STATE_PLAYING;
+}
+
+// Start men el main menu (step 17: el cutscene hayeb2a hena 2abl el game)
+void startGame() {
+    restartGame();
+}
+
+// Nrga3 lel main menu (w el game yebda2 men el awel lama ndoos Start)
+void goToMainMenu() {
+    restartGame();
+    gameState = STATE_MENU;
+}
+
+// Shashet el win aw el lose (fo2 el game el wa2ef)
+void drawEndScreen() {
+    bool won = (gameState == STATE_WON);
+
+    // Panel fel nos b bervaz (a5dar law kesebt, a7mar law 5esert)
+    float br = 0.8f, bg = 0.15f, bb = 0.15f;
+    if (won) {
+        br = 0.2f; bg = 0.75f; bb = 0.3f;
+    }
+
+    drawRectangle(1.16f, 0.86f, 0.0f, 0.0f, br, bg, bb);
+    drawRectangle(1.1f, 0.8f, 0.0f, 0.0f, 0.1f, 0.1f, 0.13f);
+
+    // El 3enwan w el sabab
+    if (won) {
+        drawText("YOU WIN!", 0.0f, 0.23f, 0.019f, 0.3f, 0.9f, 0.4f);
+        drawText("ALL WAVES CLEARED", 0.0f, 0.08f, 0.009f, 0.9f, 0.9f, 0.9f);
+    }
+    else {
+        drawText("GAME OVER", 0.0f, 0.23f, 0.019f, 0.95f, 0.25f, 0.25f);
+        drawText("AN ENEMY REACHED THE BASE", 0.0f, 0.08f, 0.0065f, 0.9f, 0.9f, 0.9f);
+    }
+
+    // El zarayer
+    std::string labels[2] = {"RESTART", "MAIN MENU"};
+    drawButtons(labels, END_BUTTON_Y, 2);
+}
+
+// Shashet el pause (Esc)
+void drawPauseMenu() {
+    // Panel fel nos b bervaz asfar
+    drawRectangle(0.86f, 0.98f, 0.0f, 0.0f, 0.95f, 0.8f, 0.2f);
+    drawRectangle(0.8f, 0.92f, 0.0f, 0.0f, 0.1f, 0.1f, 0.13f);
+
+    drawText("PAUSED", 0.0f, 0.27f, 0.019f, 0.95f, 0.8f, 0.2f);
+
+    std::string labels[3] = {"CONTINUE", "RESTART", "MAIN MENU"};
+    drawButtons(labels, PAUSE_BUTTON_Y, 3);
+}
+
+// El main menu (awel ma el game yeftah) - bey3'atty el shasha kolaha
+void drawMainMenu() {
+    // 5alfeya: sama bel leil
+    drawRectangle(2.0f, 2.0f, 0.0f, 0.0f, 0.06f, 0.08f, 0.16f);
+
+    // Mabany sooda ta7t (zay el madeena men ba3eed)
+    float buildingX[7] = {-0.85f, -0.6f, -0.35f, -0.1f, 0.15f, 0.4f, 0.7f};
+    float buildingH[7] = {0.45f, 0.65f, 0.35f, 0.55f, 0.4f, 0.6f, 0.5f};
+
+    for (int i = 0; i < 7; i++) {
+        drawRectangle(0.22f, buildingH[i], buildingX[i], -1.0f + buildingH[i] / 2.0f,
+                      0.12f, 0.14f, 0.22f);
+
+        // Shebbak menawar fe kol mabna
+        drawRectangle(0.035f, 0.05f, buildingX[i], -1.0f + buildingH[i] - 0.1f,
+                      1.0f, 0.85f, 0.35f);
+    }
+
+    // Esm el game (8ayaro 3ala 7asab el theme bta3ko)
+    drawText("CITY DEFENSE", 0.0f, 0.45f, 0.022f, 0.95f, 0.8f, 0.2f);
+    drawText("PROTECT THE CITY", 0.0f, 0.26f, 0.009f, 0.85f, 0.85f, 0.9f);
+
+    std::string labels[2] = {"START", "EXIT"};
+    drawButtons(labels, MAIN_MENU_BUTTON_Y, 2);
+
+    drawText("ESC TO PAUSE", 0.0f, -0.4f, 0.006f, 0.6f, 0.6f, 0.7f);
+}
+
+// 3 morab3at fel nos fo2: kol wa7ed wave (a5dar = 5elset, asfar = delwa2ty, ramady = lessa)
+void drawWaveIndicator() {
+    // Panel gham2 wara
+    drawRectangle(0.42f, 0.14f, 0.15f, CARD_Y, 0.12f, 0.12f, 0.15f);
+
+    for (int i = 0; i < 3; i++) {
+        float x = 0.02f + i * 0.13f;
+
+        float r = 0.4f, g = 0.4f, b = 0.4f;      // lessa
+        if (i < currentWave || allWavesDone) {
+            r = 0.2f; g = 0.7f; b = 0.3f;         // 5elset
+        }
+        else if (i == currentWave) {
+            r = 1.0f; g = 0.85f; b = 0.1f;        // delwa2ty
+
+            // Bervaz abyad 7awalen el wave el delwa2ty
+            drawRectangle(0.115f, 0.115f, x, CARD_Y, 1.0f, 1.0f, 1.0f);
+        }
+
+        drawRectangle(0.1f, 0.1f, x, CARD_Y, r, g, b);
+        drawNumber(i + 1, x, CARD_Y, 0.06f, 0.1f, 0.1f, 0.1f);
+    }
+}
+
+// El 3 cards fo2 3al shmal
+void drawCards() {
+    float mx, my;
+    getMousePosition(&mx, &my);
+    int hoveredCard = cardAt(mx, my);
+
+    // Panel gham2 wara el cards
+    drawRectangle(0.64f, 0.27f, -0.62f, CARD_Y, 0.12f, 0.12f, 0.15f);
+
+    for (int i = 0; i < 3; i++) {
+        // Ramady law lessa locked aw law el coins mesh kfaya lel se3r
+        bool locked = !isUnlocked(i) || coins < playerCost(i);
+        float x = CARD_X[i];
+
+        // Card el defense mestany makan: bervaz asfar
+        if (i == PLAYER_DEFENSE && placingDefense)
+            drawRectangle(CARD_W + 0.03f, CARD_H + 0.03f, x, CARD_Y, 1.0f, 0.85f, 0.1f);
+
+        // Hover: bervaz abyad (bas law unlocked - el locked mabyrodsh)
+        if (!locked && hoveredCard == i)
+            drawRectangle(CARD_W + 0.02f, CARD_H + 0.02f, x, CARD_Y, 1.0f, 1.0f, 1.0f);
+
+        // Wesh el card
+        drawCardPart(CARD_W, CARD_H, x, CARD_Y, 0.85f, 0.8f, 0.6f, locked);
+
+        // Soret el player
+        float w, h, r, g, b;
+        getPlayerLook(i, &w, &h, &r, &g, &b);
+        drawCardPart(w * 0.8f, h * 0.8f, x, CARD_Y + 0.03f, r, g, b, locked);
+
+        // El se3r ta7t
+        float nr = 0.2f, ng = 0.15f, nb = 0.05f;
+        if (locked) {
+            nr = 0.35f; ng = 0.35f; nb = 0.35f;
+        }
+
+        drawNumber(playerCost(i), x - 0.025f, CARD_Y - 0.075f, 0.04f, nr, ng, nb);
     }
 }
 
@@ -1236,13 +1941,20 @@ int main() {
         // ==========================================
         // 12. PLAYERS W ENEMIES
         // ==========================================
-        updateEnemySpawning();
-        updatePlayers();
-        updateEnemies();
-        updatePlayerAttacks();
-        updateEnemyAttacks();
-        updateProjectiles();
-        removeDeadEntities();
+        // El game wa2ef law kesebna aw 5esrna (bnersem bas mn gher update)
+        if (gameState == STATE_PLAYING) {
+            updateWaves();
+            updatePlayers();
+            updateEnemies();
+            updatePlayerAttacks();
+            updateEnemyAttacks();
+            updateProjectiles();
+            removeDeadEntities();
+            updateCoins();
+        }
+
+        for (int i = 0; i < (int)droppedCoins.size(); i++)
+            drawCoinIcon(droppedCoins[i].x, LANE_Y[droppedCoins[i].lane] - 0.07f, 0.04f);
 
         for (int i = 0; i < (int)players.size(); i++)
             drawPlayer(players[i]);
@@ -1252,6 +1964,28 @@ int main() {
 
         for (int i = 0; i < (int)projectiles.size(); i++)
             drawProjectile(projectiles[i]);
+
+
+        // ==========================================
+        // 13. UI: el cards w el coins
+        // ==========================================
+        drawDefensePreview();
+        drawCards();
+        drawCoinCounter();
+        drawWaveIndicator();
+
+
+        // ==========================================
+        // 14. MENUS (win/lose, pause, main menu)
+        // ==========================================
+        if (gameState == STATE_WON || gameState == STATE_LOST)
+            drawEndScreen();
+
+        if (gameState == STATE_PAUSED)
+            drawPauseMenu();
+
+        if (gameState == STATE_MENU)
+            drawMainMenu();
 
 
 
