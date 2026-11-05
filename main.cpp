@@ -2260,10 +2260,34 @@ void drawCards() {
 // El arena (Arrakis) - kolaha rectangles
 // ==========================================
 
-// Dayra men rectangles ofo2eya fo2 ba3d (zay el pixel art)
+// Zay drawRectangle bas el lon byetghayar men fo2 le ta7t (gradient na3em)
+void drawGradientRectangle(float rectWidth, float rectHeight, float posX, float posY,
+                           float rTop, float gTop, float bTop,
+                           float rBottom, float gBottom, float bBottom) {
+    float left   = posX - rectWidth / 2.0f;
+    float right  = posX + rectWidth / 2.0f;
+    float top    = posY + rectHeight / 2.0f;
+    float bottom = posY - rectHeight / 2.0f;
+
+    // El vertices elly fo2 leha lon, w elly ta7t leha lon tany (el GPU byemla elly benhom)
+    float vertices[] = {
+        left,  top,    0.0f, rTop,    gTop,    bTop,
+        left,  bottom, 0.0f, rBottom, gBottom, bBottom,
+        right, top,    0.0f, rTop,    gTop,    bTop,
+        right, bottom, 0.0f, rBottom, gBottom, bBottom
+    };
+
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+}
+
+// Dayra men rectangles ofo2eya fo2 ba3d
 // (el 3ard byetsala7 bel aspect 3ashan tefdal dayra mesh beyda)
 void drawCircle(float x, float y, float radius, float r, float g, float b) {
-    int strips = 14;
+    int strips = 24;
     float stripH = 2.0f * radius / strips;
     float aspect = (float)height / width;
 
@@ -2276,150 +2300,227 @@ void drawCircle(float x, float y, float radius, float r, float g, float b) {
     }
 }
 
-// Kseeb raml (dune): rectangles fo2 ba3d, kol wa7da ad2a2 men elly ta7taha
-void drawDune(float x, float baseY, float duneWidth, float duneHeight,
-              float r, float g, float b) {
-    int steps = 8;
-    float stepH = duneHeight / steps;
-
-    for (int i = 0; i < steps; i++) {
-        float t = (float)i / steps;              // 0 = ta7t, 1 = fo2
-        float w = duneWidth * sqrt(1.0f - t);    // me2awwar men fo2
-
-        drawRectangle(w, stepH + 0.002f, x, baseY + stepH * (i + 0.5f), r, g, b);
-    }
-}
-
-// Sama Arrakis: bortoo2any gham2 fo2 w asfar fate7 3and el ofo2
+// Sama Arrakis: gradient men bonny/a7mar fo2 le bortoo2any le asfar fate7 3and el ofo2
 void drawSky() {
-    float bandR[6] = {0.55f, 0.68f, 0.80f, 0.89f, 0.95f, 0.98f};
-    float bandG[6] = {0.24f, 0.33f, 0.44f, 0.55f, 0.67f, 0.78f};
-    float bandB[6] = {0.12f, 0.15f, 0.19f, 0.25f, 0.34f, 0.47f};
+    drawGradientRectangle(2.0f, 0.20f, 0.0f, 0.90f,
+                          0.42f, 0.17f, 0.10f,
+                          0.80f, 0.40f, 0.18f);
 
-    float top = 1.0f;
-    float horizon = 0.62f;
-    float bandH = (top - horizon) / 6.0f;
-
-    for (int i = 0; i < 6; i++)
-        drawRectangle(2.0f, bandH + 0.002f, 0.0f, top - bandH * (i + 0.5f),
-                      bandR[i], bandG[i], bandB[i]);
+    drawGradientRectangle(2.0f, 0.18f, 0.0f, 0.71f,
+                          0.80f, 0.40f, 0.18f,
+                          0.99f, 0.80f, 0.52f);
 }
 
-// El 2amarein bto3 Arrakis (wa7ed kebeer w wa7ed soghayar)
+// El 2amarein bto3 Arrakis, kol wa7ed 7awaleeh nour (dawayer asghar fo2 ba3d)
 void drawMoons() {
-    drawCircle(0.46f, 0.79f, 0.075f, 0.97f, 0.93f, 0.82f);
-    drawCircle(0.44f, 0.81f, 0.020f, 0.88f, 0.83f, 0.72f);  // 7ofra fel 2amar
+    // El kebeer
+    drawCircle(0.46f, 0.79f, 0.115f, 0.86f, 0.51f, 0.27f);
+    drawCircle(0.46f, 0.79f, 0.092f, 0.93f, 0.66f, 0.42f);
+    drawCircle(0.46f, 0.79f, 0.075f, 0.98f, 0.94f, 0.84f);
+    drawCircle(0.44f, 0.81f, 0.018f, 0.91f, 0.86f, 0.75f);
+    drawCircle(0.49f, 0.77f, 0.012f, 0.91f, 0.86f, 0.75f);
 
-    drawCircle(-0.17f, 0.88f, 0.035f, 0.92f, 0.86f, 0.76f);
+    // El soghayar
+    drawCircle(-0.17f, 0.88f, 0.050f, 0.72f, 0.40f, 0.22f);
+    drawCircle(-0.17f, 0.88f, 0.035f, 0.93f, 0.87f, 0.77f);
 }
 
-// El kseeban el be3eeda (fat7a) w el 2orayyeba (agham2)
-void drawDunes() {
-    // Be3eeda
-    drawDune(-0.85f, 0.62f, 0.70f, 0.14f, 0.86f, 0.62f, 0.38f);
-    drawDune(-0.25f, 0.62f, 0.80f, 0.17f, 0.86f, 0.62f, 0.38f);
-    drawDune( 0.35f, 0.62f, 0.70f, 0.12f, 0.86f, 0.62f, 0.38f);
-    drawDune( 0.90f, 0.62f, 0.75f, 0.16f, 0.86f, 0.62f, 0.38f);
+// Ertefa3 el kseeban el be3eeda 3and x (sin fo2 sin 3ashan el shakl yeb2a tabee3y)
+float farDuneTop(float x) {
+    return 0.71f + 0.045f * sin(2.7f * x + 0.6f) + 0.02f * sin(6.9f * x + 2.1f);
+}
 
-    // Sandworm tale3 men el raml (2os men morab3at soghayara)
-    for (int i = 0; i <= 12; i++) {
-        float angle = 3.14159f * i / 12.0f;
-        float wx = 0.15f + 0.075f * cos(angle);
-        float wy = 0.63f + 0.075f * sin(angle);
+// Ertefa3 el kseeban el 2orayyeba
+float nearDuneTop(float x) {
+    return 0.655f + 0.025f * sin(3.9f * x + 2.4f) + 0.012f * sin(9.7f * x + 0.3f);
+}
 
-        drawRectangle(0.028f, 0.035f, wx, wy, 0.46f, 0.31f, 0.21f);
+// Saff kseeban: 3awameed rofa3 gamb ba3d, kol 3amood tooloh 7asab el sin
+// (w 5att nour rofayya3 3ala el 2emma)
+void drawDuneLayer(bool far,
+                   float rTop, float gTop, float bTop,
+                   float rBottom, float gBottom, float bBottom,
+                   float rLight, float gLight, float bLight) {
+    int columns = 160;
+    float colW = 2.0f / columns;
+    float bottom = 0.60f;
+
+    for (int i = 0; i < columns; i++) {
+        float x = -1.0f + colW * (i + 0.5f);
+        float top;
+
+        if (far)
+            top = farDuneTop(x);
+        else
+            top = nearDuneTop(x);
+
+        drawGradientRectangle(colW + 0.002f, top - bottom, x, (top + bottom) / 2.0f,
+                              rTop, gTop, bTop, rBottom, gBottom, bBottom);
+
+        drawRectangle(colW + 0.002f, 0.006f, x, top - 0.003f, rLight, gLight, bLight);
     }
-
-    // 2orayyeba
-    drawDune(-0.55f, 0.62f, 0.65f, 0.09f, 0.78f, 0.54f, 0.32f);
-    drawDune( 0.05f, 0.62f, 0.55f, 0.07f, 0.78f, 0.54f, 0.32f);
-    drawDune( 0.65f, 0.62f, 0.60f, 0.09f, 0.78f, 0.54f, 0.32f);
 }
 
-// Sa5ra 3aleya (mesa): rectangle te5een w rectangle ad2a2 foo2o
+// Sa5ra 3aleya (mesa): talat dorr (wase3 ta7t w ad2a2 fo2), gamb fel dell w gamb fel nour
 void drawMesa(float x, float baseY, float mesaWidth, float mesaHeight) {
-    drawRectangle(mesaWidth, mesaHeight, x, baseY + mesaHeight / 2.0f,
-                  0.45f, 0.27f, 0.17f);
+    // El dor el wase3 ta7t
+    drawGradientRectangle(mesaWidth * 1.35f, mesaHeight * 0.3f, x, baseY + mesaHeight * 0.15f,
+                          0.50f, 0.30f, 0.19f,
+                          0.40f, 0.24f, 0.15f);
 
+    // El gesm
+    drawGradientRectangle(mesaWidth, mesaHeight, x, baseY + mesaHeight / 2.0f,
+                          0.52f, 0.31f, 0.19f,
+                          0.38f, 0.22f, 0.14f);
+
+    // El ras el ad2a2
     drawRectangle(mesaWidth * 0.75f, mesaHeight * 0.25f, x,
                   baseY + mesaHeight + mesaHeight * 0.125f,
-                  0.45f, 0.27f, 0.17f);
+                  0.50f, 0.30f, 0.18f);
 
     // Nour el shams 3al gamb el shmal
-    drawRectangle(mesaWidth * 0.2f, mesaHeight, x - mesaWidth * 0.4f,
-                  baseY + mesaHeight / 2.0f, 0.60f, 0.38f, 0.24f);
+    drawGradientRectangle(mesaWidth * 0.22f, mesaHeight, x - mesaWidth * 0.39f,
+                          baseY + mesaHeight / 2.0f,
+                          0.72f, 0.47f, 0.29f,
+                          0.55f, 0.34f, 0.21f);
 }
 
-// El fasel el sa5ry ben el lanes (badal el sidewalk)
-void drawRockRidge(float y, float ridgeHeight) {
-    // Dell gham2
-    drawRectangle(2.0f, ridgeHeight, 0.0f, y, 0.33f, 0.21f, 0.14f);
+// El sandworm: dahro tale3 men el raml (2oba malyana) w beyemshy bel ra7a 3ala el kseeban
+void drawSandworm(float t) {
+    // Beyemshy men el yemeen lel shmal w yerga3 tany
+    float x = 1.1f - fmod(t * 0.025f, 2.2f);
+    float baseY = farDuneTop(x) - 0.012f;
 
-    // El sa5r nafso
-    drawRectangle(2.0f, ridgeHeight * 0.65f, 0.0f, y + ridgeHeight * 0.05f,
-                  0.52f, 0.35f, 0.23f);
+    int columns = 14;
+    float colW = 0.008f;
 
-    // Nour 3ala el 7arf elly fo2
-    drawRectangle(2.0f, 0.010f, 0.0f, y + ridgeHeight * 0.35f,
-                  0.68f, 0.50f, 0.33f);
+    for (int i = -columns; i <= columns; i++) {
+        float k = (float)i / columns;
+        float top = baseY + 0.045f * sqrt(1.0f - k * k);
 
-    // 7agar soghayar w spice (no2at bortoo2any)
-    for (int i = 0; i < 10; i++) {
-        float x = -0.92f + i * 0.2f;
+        // Kol talat 3awameed 7alaqa agham2 (zay el 7ala2at fe gesm el worm)
+        float shade = (i % 3 == 0) ? 0.06f : 0.0f;
 
-        drawRectangle(0.03f, 0.012f, x, y - ridgeHeight * 0.1f,
-                      0.40f, 0.26f, 0.17f);
+        drawGradientRectangle(colW + 0.001f, top - baseY + 0.01f, x + i * colW,
+                              (top + baseY - 0.01f) / 2.0f,
+                              0.58f - shade, 0.40f - shade, 0.27f - shade,
+                              0.40f - shade, 0.27f - shade, 0.18f - shade);
+    }
 
-        if (i % 3 == 1)
-            drawRectangle(0.010f, 0.010f, x + 0.07f, y + ridgeHeight * 0.12f,
-                          1.0f, 0.55f, 0.15f);
+    // Raml beyetrash men 3and el atraf
+    drawRectangle(0.014f, 0.008f, x - 0.125f, baseY + 0.010f, 0.97f, 0.80f, 0.55f);
+    drawRectangle(0.010f, 0.008f, x - 0.140f, baseY + 0.022f, 0.97f, 0.80f, 0.55f);
+    drawRectangle(0.012f, 0.008f, x + 0.125f, baseY + 0.014f, 0.97f, 0.80f, 0.55f);
+}
+
+// 7abbet raml tayra fel hawa (el reya7 bet7arakha le el shmal)
+void drawDust(float t) {
+    float aspect = (float)height / width;
+
+    for (int i = 0; i < 36; i++) {
+        float speed = 0.04f + 0.03f * (i % 5) / 4.0f;
+        float startX = fmod(i * 0.618f, 1.0f) * 2.1f;
+
+        float x = 1.05f - fmod(startX + t * speed, 2.1f);
+        float y = 0.64f + fmod(i * 0.137f, 0.34f) + 0.01f * sin(t * 1.3f + i);
+
+        float size = 0.004f + 0.002f * (i % 3);
+        drawRectangle(size * aspect, size, x, y, 1.0f, 0.90f, 0.72f);
     }
 }
 
-// Lane wa7ed: raml metgamma3 w 3aleh mawgat soghayara
+// El fasel el sa5ry ben el lanes
+void drawRockRidge(float y, float ridgeHeight, float t) {
+    // El sa5r: fate7 fo2 (el shams) w gham2 ta7t
+    drawGradientRectangle(2.0f, ridgeHeight, 0.0f, y,
+                          0.64f, 0.45f, 0.30f,
+                          0.33f, 0.21f, 0.14f);
+
+    // 5att nour fo2 w dell ta7t
+    drawRectangle(2.0f, 0.008f, 0.0f, y + ridgeHeight / 2.0f - 0.004f, 0.78f, 0.60f, 0.42f);
+    drawRectangle(2.0f, 0.008f, 0.0f, y - ridgeHeight / 2.0f + 0.004f, 0.24f, 0.15f, 0.10f);
+
+    // 7agar soghayar (gamb fel dell w gamb fel nour) w spice benawwar
+    for (int i = 0; i < 9; i++) {
+        float x = -0.88f + i * 0.22f + 0.03f * sin(i * 2.3f);
+
+        drawRectangle(0.045f, 0.018f, x, y - ridgeHeight * 0.05f, 0.40f, 0.26f, 0.17f);
+        drawRectangle(0.028f, 0.010f, x - 0.004f, y + ridgeHeight * 0.05f, 0.58f, 0.41f, 0.27f);
+
+        if (i % 3 == 1) {
+            float glow = 0.5f + 0.5f * sin(t * 2.0f + i);
+            drawRectangle(0.012f, 0.012f, x + 0.08f, y + ridgeHeight * 0.1f,
+                          0.90f + 0.10f * glow, 0.45f + 0.15f * glow, 0.10f + 0.10f * glow);
+        }
+    }
+}
+
+// Lane wa7ed: raml metgamma3 (gradient) w 3aleh mawgat raml na3ma
 void drawSandLane(float laneY) {
     // Dell ta7t el lane
     drawRectangle(1.89f, 0.30f, 0.0f, laneY - 0.012f, 0.33f, 0.22f, 0.15f);
 
-    // El raml nafso
-    drawRectangle(1.85f, 0.28f, 0.0f, laneY, 0.54f, 0.40f, 0.28f);
+    // El raml nafso: fate7 fo2 w gham2 ta7t
+    drawGradientRectangle(1.85f, 0.28f, 0.0f, laneY,
+                          0.62f, 0.47f, 0.33f,
+                          0.50f, 0.37f, 0.26f);
 
-    // 7arf fate7 fo2
-    drawRectangle(1.82f, 0.012f, 0.0f, laneY + 0.125f, 0.62f, 0.47f, 0.33f);
+    // Dell rofayya3 ta7t el sa5r elly fo2 el lane
+    drawRectangle(1.85f, 0.010f, 0.0f, laneY + 0.135f, 0.42f, 0.30f, 0.21f);
 
-    // Mawgat el raml (kol wa7da 3 rectangles zay "~")
-    for (int row = 0; row < 2; row++) {
-        float y = laneY + 0.06f - row * 0.12f;
-        float shift = row * 0.11f;
+    // Mawgat el raml: 5att mawgy gham2 w foo2o 5att nour (kol wa7ed men 7etat soghayara)
+    int pieces = 48;
+    float pieceW = 1.80f / pieces;
 
-        for (int i = 0; i < 8; i++) {
-            float x = -0.80f + i * 0.22f + shift;
+    for (int row = 0; row < 3; row++) {
+        float rowY = laneY + 0.07f - row * 0.07f;
 
-            drawRectangle(0.04f, 0.008f, x,         y,          0.45f, 0.32f, 0.22f);
-            drawRectangle(0.04f, 0.008f, x + 0.04f, y + 0.008f, 0.45f, 0.32f, 0.22f);
-            drawRectangle(0.04f, 0.008f, x + 0.08f, y,          0.45f, 0.32f, 0.22f);
+        for (int i = 0; i < pieces; i++) {
+            float x = -0.90f + pieceW * (i + 0.5f);
+
+            // Fawasel ben el mawgat 3ashan mayeb2ash 5att wa7ed taweel
+            if (sin(x * 3.3f + row * 1.9f + laneY * 4.0f) < -0.35f)
+                continue;
+
+            float y = rowY + 0.008f * sin(x * 9.0f + row * 1.7f + laneY * 5.0f);
+
+            drawRectangle(pieceW + 0.002f, 0.005f, x, y, 0.52f, 0.38f, 0.27f);
+            drawRectangle(pieceW + 0.002f, 0.004f, x, y + 0.006f, 0.65f, 0.50f, 0.35f);
         }
     }
 }
 
 // El arena kolaha (bnersemha awel 7aga fe kol frame)
 void drawArena() {
+    // El wa2t 3ashan el 7agat elly bet7arak (el worm, el raml, el spice)
+    float t = (float)glfwGetTime();
+
     drawSky();
     drawMoons();
+    drawDust(t);
 
     // El ard: raml men el ofo2 le ta7t
     drawRectangle(2.0f, 1.62f, 0.0f, -0.19f, 0.80f, 0.60f, 0.38f);
 
+    // El kseeban el be3eeda, el worm, el sa5r, ba3den el 2orayyeba
+    drawDuneLayer(true,
+                  0.93f, 0.70f, 0.45f,
+                  0.82f, 0.56f, 0.34f,
+                  0.99f, 0.84f, 0.60f);
+    drawSandworm(t);
     drawMesa(-0.18f, 0.62f, 0.12f, 0.12f);
     drawMesa( 0.97f, 0.62f, 0.10f, 0.08f);
-    drawDunes();
+    drawDuneLayer(false,
+                  0.86f, 0.60f, 0.36f,
+                  0.74f, 0.50f, 0.30f,
+                  0.95f, 0.74f, 0.50f);
 
     // El fasel elly fo2 el lanes, w el fawasel elly benhom, w elly ta7t
-    drawRockRidge(0.585f, 0.07f);
-    drawRockRidge(0.22f, 0.085f);
-    drawRockRidge(-0.16f, 0.085f);
-    drawRockRidge(-0.54f, 0.085f);
-    drawRockRidge(-0.92f, 0.085f);
+    drawRockRidge(0.585f, 0.07f, t);
+    drawRockRidge(0.22f, 0.085f, t);
+    drawRockRidge(-0.16f, 0.085f, t);
+    drawRockRidge(-0.54f, 0.085f, t);
+    drawRockRidge(-0.92f, 0.085f, t);
 
     for (int i = 0; i < 4; i++)
         drawSandLane(LANE_Y[i]);
