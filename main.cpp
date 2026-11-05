@@ -299,7 +299,8 @@ const int SPRITE_FREMEN   = 1;  // player ranged
 const int SPRITE_PILOT    = 2;  // enemy easy (byedrab men fo2)
 const int SPRITE_BRUTE    = 3;  // enemy medium (byedrab men ta7t)
 const int SPRITE_OFFICER  = 4;  // enemy hard (melee)
-const int SPRITE_COUNT    = 5;
+const int SPRITE_SARDAUKAR = 5; // player defense (wa2ef bas)
+const int SPRITE_COUNT    = 6;
 
 // Kol el ma3loomat 3an atlas wa7ed (da elly kan mo5talef bein el demos)
 struct SpriteInfo {
@@ -348,6 +349,12 @@ SpriteInfo sprites[SPRITE_COUNT] = {
       {158, 158, 155, 157, 157, 158},
       {6, 12, 16, 18, 10, 12},
       4, 0.0f, 0, 0, 0 },
+
+    // Sardaukar (defense player) - el idle bas byetsta5dem
+    { "assets/sardaukar_atlas.png", 204, 181, 102.0f,
+      {150, 150, 150, 150, 150, 150},
+      {6, 10, 10, 10, 10, 10},
+      4, 0.0f, 0, 0, 0 },
 };
 
 // Takbeer el sprite (1.0 = el sora zay ma heya bel pixels, 0.5 = nos)
@@ -373,6 +380,9 @@ int playerSprite(int type) {
 
     if (type == PLAYER_RANGED)
         return SPRITE_FREMEN;
+
+    if (type == PLAYER_DEFENSE)
+        return SPRITE_SARDAUKAR;
 
     return -1;
 }
@@ -1329,7 +1339,7 @@ void drawEnemyRectangle(Enemy e) {
 void drawPlayer(Player p) {
     int sprite = playerSprite(p.type);
 
-    // El defense mafeesh leh sprite, w law el atlas mat-load-ash nersem el rectangle
+    // Law el atlas mat-load-ash nersem el rectangle
     if (sprite == -1 || sprites[sprite].texture == 0) {
         drawPlayerRectangle(p);
         return;
@@ -1590,9 +1600,17 @@ void updatePlayerAnimations() {
         Player& p = players[i];
         int sprite = playerSprite(p.type);
 
-        // El defense mafeesh leh sprite
+        // Mafeesh sprite leh
         if (sprite == -1)
             continue;
+
+        // El defense wa2ef bas: el idle 3ala tool (mafeesh darb wala 7araka)
+        if (p.type == PLAYER_DEFENSE) {
+            p.animState = ANIM_IDLE;
+            p.animTime += deltaTime;
+            p.attacked = false;
+            continue;
+        }
 
         SpriteInfo& s = sprites[sprite];
 
@@ -1921,8 +1939,9 @@ void drawNumber(int value, float x, float y, float size, float r, float g, float
 
 // 3add el coins fo2 3al yemeen
 void drawCoinCounter() {
-    // Panel gham2 wara
-    drawRectangle(0.36f, 0.14f, 0.74f, CARD_Y, 0.12f, 0.12f, 0.15f);
+    // Panel gham2 wara (b bervaz lon el raml)
+    drawRectangle(0.38f, 0.16f, 0.74f, CARD_Y, 0.55f, 0.38f, 0.24f);
+    drawRectangle(0.36f, 0.14f, 0.74f, CARD_Y, 0.22f, 0.13f, 0.08f);
 
     drawCoinIcon(0.62f, CARD_Y, 0.07f);
     drawNumber(coins, 0.7f, CARD_Y, 0.07f, 1.0f, 0.85f, 0.2f);
@@ -1950,6 +1969,15 @@ void drawDefensePreview() {
     int lane = getMouseLane();
     if (lane == -1)
         return;
+
+    // El sprite ramady shwaya (lessa mat7atsh) w 5att asfar ta7t regleeh
+    int sprite = playerSprite(PLAYER_DEFENSE);
+    if (sprites[sprite].texture != 0) {
+        drawRectangle(0.10f, 0.012f, mx, LANE_Y[lane] - FEET_OFFSET, 1.0f, 0.85f, 0.1f);
+        drawSprite(sprite, ANIM_IDLE, 0, mx, LANE_Y[lane] - FEET_OFFSET,
+                   true, 0.0f, 0.6f, SPRITE_SCALE);
+        return;
+    }
 
     float w, h, r, g, b;
     getPlayerLook(PLAYER_DEFENSE, &w, &h, &r, &g, &b);
@@ -2065,20 +2093,70 @@ int endButtonAt(float x, float y) {
     return buttonAt(x, y, END_BUTTON_Y, 2);
 }
 
-// Nersem zarayer menu (bytnawaro asfar lama el mouse 3alehom)
+// Mawgoodeen ta7t fe 7etet el arena
+void drawGradientRectangle(float rectWidth, float rectHeight, float posX, float posY,
+                           float rTop, float gTop, float bTop,
+                           float rBottom, float gBottom, float bBottom);
+void drawCircle(float x, float y, float radius, float r, float g, float b);
+void drawDust(float t, float minY, float rangeY);
+void drawWormHump(float x, float baseY, float size);
+
+// Kelma b dell gham2 wara (3ashan teban 3ala ay 5alfeya)
+void drawTextShadow(std::string text, float centerX, float y, float pixel,
+                    float r, float g, float b) {
+    float offset = pixel * 0.6f;
+
+    drawText(text, centerX + offset, y - offset * (float)width / height, pixel,
+             0.15f, 0.07f, 0.04f);
+    drawText(text, centerX, y, pixel, r, g, b);
+}
+
+// Panel zay lo7 sa5r: bervaz gham2 bara, bervaz bel lon, w gowa gradient bonny
+// (w 4 morab3at soghayara fel zawaya)
+void drawPanel(float w, float h, float x, float y, float ar, float ag, float ab) {
+    drawRectangle(w + 0.04f, h + 0.05f, x, y, 0.12f, 0.07f, 0.04f);
+    drawRectangle(w, h, x, y, ar, ag, ab);
+
+    drawGradientRectangle(w - 0.03f, h - 0.04f, x, y,
+                          0.30f, 0.19f, 0.12f,
+                          0.16f, 0.10f, 0.06f);
+
+    float cornerX = (w - 0.03f) / 2.0f - 0.025f;
+    float cornerY = (h - 0.04f) / 2.0f - 0.03f;
+
+    drawRectangle(0.02f, 0.027f, x - cornerX, y + cornerY, ar, ag, ab);
+    drawRectangle(0.02f, 0.027f, x + cornerX, y + cornerY, ar, ag, ab);
+    drawRectangle(0.02f, 0.027f, x - cornerX, y - cornerY, ar, ag, ab);
+    drawRectangle(0.02f, 0.027f, x + cornerX, y - cornerY, ar, ag, ab);
+}
+
+// Nersem zarayer menu (bytnawaro bortoo2any zay el spice lama el mouse 3alehom)
 void drawButtons(std::string* labels, float* buttonY, int count) {
     float mx, my;
     getMousePosition(&mx, &my);
     int hovered = buttonAt(mx, my, buttonY, count);
 
     for (int i = 0; i < count; i++) {
-        float r = 0.25f, g = 0.25f, b = 0.3f;
+        float y = buttonY[i];
+
+        // El 3ady: sa5r bonny
+        float br = 0.62f, bg = 0.44f, bb = 0.28f;
+        float tr = 0.46f, tg = 0.31f, tb = 0.20f;
+        float dr = 0.32f, dg = 0.20f, db = 0.13f;
+
+        // El mouse 3aleh: bortoo2any menawar
         if (hovered == i) {
-            r = 0.95f; g = 0.8f; b = 0.2f;
+            br = 1.0f;  bg = 0.85f; bb = 0.45f;
+            tr = 1.0f;  tg = 0.68f; tb = 0.24f;
+            dr = 0.86f; dg = 0.42f; db = 0.12f;
         }
 
-        drawRectangle(END_BUTTON_W, END_BUTTON_H, 0.0f, buttonY[i], r, g, b);
-        drawText(labels[i], 0.0f, buttonY[i], 0.009f, 1.0f, 1.0f, 1.0f);
+        drawRectangle(END_BUTTON_W + 0.02f, END_BUTTON_H + 0.025f, 0.0f, y, 0.12f, 0.07f, 0.04f);
+        drawRectangle(END_BUTTON_W, END_BUTTON_H, 0.0f, y, br, bg, bb);
+        drawGradientRectangle(END_BUTTON_W - 0.016f, END_BUTTON_H - 0.02f, 0.0f, y,
+                              tr, tg, tb, dr, dg, db);
+
+        drawTextShadow(labels[i], 0.0f, y, 0.009f, 1.0f, 0.95f, 0.85f);
     }
 }
 
@@ -2121,23 +2199,20 @@ void goToMainMenu() {
 void drawEndScreen() {
     bool won = (gameState == STATE_WON);
 
-    // Panel fel nos b bervaz (a5dar law kesebt, a7mar law 5esert)
-    float br = 0.8f, bg = 0.15f, bb = 0.15f;
-    if (won) {
-        br = 0.2f; bg = 0.75f; bb = 0.3f;
-    }
-
-    drawRectangle(1.16f, 0.86f, 0.0f, 0.0f, br, bg, bb);
-    drawRectangle(1.1f, 0.8f, 0.0f, 0.0f, 0.1f, 0.1f, 0.13f);
+    // Lo7 sa5r fel nos (bervaz a5dar law kesebt, a7mar law 5esert)
+    if (won)
+        drawPanel(1.1f, 0.8f, 0.0f, 0.0f, 0.40f, 0.80f, 0.40f);
+    else
+        drawPanel(1.1f, 0.8f, 0.0f, 0.0f, 0.85f, 0.25f, 0.18f);
 
     // El 3enwan w el sabab
     if (won) {
-        drawText("YOU WIN!", 0.0f, 0.23f, 0.019f, 0.3f, 0.9f, 0.4f);
-        drawText("ALL WAVES CLEARED", 0.0f, 0.08f, 0.009f, 0.9f, 0.9f, 0.9f);
+        drawTextShadow("VICTORY!", 0.0f, 0.23f, 0.019f, 0.55f, 0.95f, 0.45f);
+        drawTextShadow("ARRAKIS IS SAFE", 0.0f, 0.08f, 0.009f, 1.0f, 0.92f, 0.78f);
     }
     else {
-        drawText("GAME OVER", 0.0f, 0.23f, 0.019f, 0.95f, 0.25f, 0.25f);
-        drawText("AN ENEMY REACHED THE BASE", 0.0f, 0.08f, 0.0065f, 0.9f, 0.9f, 0.9f);
+        drawTextShadow("GAME OVER", 0.0f, 0.23f, 0.019f, 1.0f, 0.35f, 0.25f);
+        drawTextShadow("THE ENEMY BROKE THROUGH", 0.0f, 0.08f, 0.0068f, 1.0f, 0.92f, 0.78f);
     }
 
     // El zarayer
@@ -2147,48 +2222,115 @@ void drawEndScreen() {
 
 // Shashet el pause (Esc)
 void drawPauseMenu() {
-    // Panel fel nos b bervaz asfar
-    drawRectangle(0.86f, 0.98f, 0.0f, 0.0f, 0.95f, 0.8f, 0.2f);
-    drawRectangle(0.8f, 0.92f, 0.0f, 0.0f, 0.1f, 0.1f, 0.13f);
+    drawPanel(0.8f, 0.92f, 0.0f, 0.0f, 0.95f, 0.72f, 0.28f);
 
-    drawText("PAUSED", 0.0f, 0.27f, 0.019f, 0.95f, 0.8f, 0.2f);
+    drawTextShadow("PAUSED", 0.0f, 0.27f, 0.019f, 1.0f, 0.78f, 0.30f);
 
     std::string labels[3] = {"CONTINUE", "RESTART", "MAIN MENU"};
     drawButtons(labels, PAUSE_BUTTON_Y, 3);
 }
 
-// El main menu (awel ma el game yeftah) - bey3'atty el shasha kolaha
-void drawMainMenu() {
-    // 5alfeya: sama bel leil
-    drawRectangle(2.0f, 2.0f, 0.0f, 0.0f, 0.06f, 0.08f, 0.16f);
+// Ertefa3 kol saff kseeban fel main menu 3and x (0 = el be3eed, 2 = el 2orayyeb)
+float menuDuneTop(int layer, float x) {
+    if (layer == 0)
+        return -0.22f + 0.07f * sin(2.1f * x + 0.4f) + 0.03f * sin(5.3f * x + 1.9f);
 
-    // Mabany sooda ta7t (zay el madeena men ba3eed)
-    float buildingX[7] = {-0.85f, -0.6f, -0.35f, -0.1f, 0.15f, 0.4f, 0.7f};
-    float buildingH[7] = {0.45f, 0.65f, 0.35f, 0.55f, 0.4f, 0.6f, 0.5f};
+    if (layer == 1)
+        return -0.47f + 0.06f * sin(2.9f * x + 2.2f) + 0.025f * sin(7.1f * x + 0.8f);
 
-    for (int i = 0; i < 7; i++) {
-        drawRectangle(0.22f, buildingH[i], buildingX[i], -1.0f + buildingH[i] / 2.0f,
-                      0.12f, 0.14f, 0.22f);
+    return -0.74f + 0.05f * sin(3.7f * x + 1.1f) + 0.02f * sin(8.9f * x + 2.6f);
+}
 
-        // Shebbak menawar fe kol mabna
-        drawRectangle(0.035f, 0.05f, buildingX[i], -1.0f + buildingH[i] - 0.1f,
-                      1.0f, 0.85f, 0.35f);
+// Saff kseeban kbeer lel main menu (nafs fekret el arena: 3awameed rofa3 gamb ba3d)
+void drawMenuDuneLayer(int layer,
+                       float rTop, float gTop, float bTop,
+                       float rBottom, float gBottom, float bBottom,
+                       float rLight, float gLight, float bLight) {
+    int columns = 160;
+    float colW = 2.0f / columns;
+    float bottom = -1.0f;
+
+    for (int i = 0; i < columns; i++) {
+        float x = -1.0f + colW * (i + 0.5f);
+        float top = menuDuneTop(layer, x);
+
+        drawGradientRectangle(colW + 0.002f, top - bottom, x, (top + bottom) / 2.0f,
+                              rTop, gTop, bTop, rBottom, gBottom, bBottom);
+
+        drawRectangle(colW + 0.002f, 0.007f, x, top - 0.0035f, rLight, gLight, bLight);
+    }
+}
+
+// 5alfeyet el main menu: sahra Arrakis wa2t el ghoroob (bet3'atty el shasha kolaha)
+void drawMenuBackground(float t) {
+    // El sama: bonny gham2 fo2 le bortoo2any 3and el ofo2
+    drawGradientRectangle(2.0f, 0.70f, 0.0f, 0.65f,
+                          0.18f, 0.07f, 0.06f,
+                          0.55f, 0.22f, 0.10f);
+    drawGradientRectangle(2.0f, 0.62f, 0.0f, -0.01f,
+                          0.55f, 0.22f, 0.10f,
+                          0.95f, 0.62f, 0.32f);
+
+    // Negoom fat7a bet-lama3 bel ra7a fel 7etta el gham2a
+    for (int i = 0; i < 20; i++) {
+        float x = -0.95f + fmod(i * 0.618f, 1.0f) * 1.9f;
+        float y = 0.62f + fmod(i * 0.381f, 1.0f) * 0.36f;
+        float glow = 0.6f + 0.4f * sin(t * 1.5f + i * 1.7f);
+
+        drawRectangle(0.006f, 0.008f, x, y, 0.95f * glow, 0.85f * glow, 0.70f * glow);
     }
 
+    // El 2amar el kebeer (b nour 7awaleeh) w el soghayar
+    drawCircle(0.62f, 0.75f, 0.22f, 0.38f, 0.15f, 0.08f);
+    drawCircle(0.62f, 0.75f, 0.18f, 0.55f, 0.27f, 0.14f);
+    drawCircle(0.62f, 0.75f, 0.14f, 0.98f, 0.93f, 0.82f);
+    drawCircle(0.58f, 0.79f, 0.030f, 0.91f, 0.86f, 0.75f);
+    drawCircle(0.67f, 0.71f, 0.022f, 0.91f, 0.86f, 0.75f);
+    drawCircle(0.60f, 0.69f, 0.014f, 0.91f, 0.86f, 0.75f);
+
+    drawCircle(-0.68f, 0.82f, 0.07f, 0.40f, 0.17f, 0.09f);
+    drawCircle(-0.68f, 0.82f, 0.05f, 0.93f, 0.87f, 0.77f);
+
+    // El kseeban: be3eed (fate7) -> 2orayyeb (gham2), w el worm beyemshy fel be3eed
+    drawMenuDuneLayer(0,
+                      0.86f, 0.58f, 0.34f,
+                      0.70f, 0.45f, 0.26f,
+                      0.97f, 0.78f, 0.52f);
+
+    float wormX = 1.2f - fmod(t * 0.04f, 2.4f);
+    drawWormHump(wormX, menuDuneTop(0, wormX) - 0.03f, 2.5f);
+
+    drawMenuDuneLayer(1,
+                      0.76f, 0.48f, 0.27f,
+                      0.58f, 0.35f, 0.20f,
+                      0.88f, 0.64f, 0.40f);
+    drawMenuDuneLayer(2,
+                      0.62f, 0.38f, 0.21f,
+                      0.42f, 0.25f, 0.14f,
+                      0.75f, 0.52f, 0.32f);
+
+    drawDust(t, -0.9f, 1.7f);
+}
+
+// El main menu (awel ma el game yeftah) - bey3'atty el shasha kolaha
+void drawMainMenu() {
+    drawMenuBackground((float)glfwGetTime());
+
     // Esm el game (8ayaro 3ala 7asab el theme bta3ko)
-    drawText("CITY DEFENSE", 0.0f, 0.45f, 0.022f, 0.95f, 0.8f, 0.2f);
-    drawText("PROTECT THE CITY", 0.0f, 0.26f, 0.009f, 0.85f, 0.85f, 0.9f);
+    drawTextShadow("ARRAKIS DEFENSE", 0.0f, 0.45f, 0.018f, 1.0f, 0.78f, 0.30f);
+    drawTextShadow("THE SPICE MUST FLOW", 0.0f, 0.26f, 0.009f, 1.0f, 0.92f, 0.78f);
 
     std::string labels[2] = {"START", "EXIT"};
     drawButtons(labels, MAIN_MENU_BUTTON_Y, 2);
 
-    drawText("ESC TO PAUSE", 0.0f, -0.4f, 0.006f, 0.6f, 0.6f, 0.7f);
+    drawTextShadow("ESC TO PAUSE", 0.0f, -0.4f, 0.006f, 1.0f, 0.92f, 0.78f);
 }
 
 // 3 morab3at fel nos fo2: kol wa7ed wave (a5dar = 5elset, asfar = delwa2ty, ramady = lessa)
 void drawWaveIndicator() {
-    // Panel gham2 wara
-    drawRectangle(0.42f, 0.14f, 0.15f, CARD_Y, 0.12f, 0.12f, 0.15f);
+    // Panel gham2 wara (b bervaz lon el raml)
+    drawRectangle(0.44f, 0.16f, 0.15f, CARD_Y, 0.55f, 0.38f, 0.24f);
+    drawRectangle(0.42f, 0.14f, 0.15f, CARD_Y, 0.22f, 0.13f, 0.08f);
 
     for (int i = 0; i < 3; i++) {
         float x = 0.02f + i * 0.13f;
@@ -2215,8 +2357,9 @@ void drawCards() {
     getMousePosition(&mx, &my);
     int hoveredCard = cardAt(mx, my);
 
-    // Panel gham2 wara el cards
-    drawRectangle(0.64f, 0.27f, -0.62f, CARD_Y, 0.12f, 0.12f, 0.15f);
+    // Panel gham2 wara el cards (b bervaz lon el raml)
+    drawRectangle(0.66f, 0.29f, -0.62f, CARD_Y, 0.55f, 0.38f, 0.24f);
+    drawRectangle(0.64f, 0.27f, -0.62f, CARD_Y, 0.22f, 0.13f, 0.08f);
 
     for (int i = 0; i < 3; i++) {
         // Ramady law lessa locked aw law el coins mesh kfaya lel se3r
@@ -2385,18 +2528,14 @@ void drawMesa(float x, float baseY, float mesaWidth, float mesaHeight) {
                           0.55f, 0.34f, 0.21f);
 }
 
-// El sandworm: dahro tale3 men el raml (2oba malyana) w beyemshy bel ra7a 3ala el kseeban
-void drawSandworm(float t) {
-    // Beyemshy men el yemeen lel shmal w yerga3 tany
-    float x = 1.1f - fmod(t * 0.025f, 2.2f);
-    float baseY = farDuneTop(x) - 0.012f;
-
+// 2obbet el sandworm (dahro tale3 men el raml) - size 1 = el 7agm el 3ady
+void drawWormHump(float x, float baseY, float size) {
     int columns = 14;
-    float colW = 0.008f;
+    float colW = 0.008f * size;
 
     for (int i = -columns; i <= columns; i++) {
         float k = (float)i / columns;
-        float top = baseY + 0.045f * sqrt(1.0f - k * k);
+        float top = baseY + 0.045f * size * sqrt(1.0f - k * k);
 
         // Kol talat 3awameed 7alaqa agham2 (zay el 7ala2at fe gesm el worm)
         float shade = (i % 3 == 0) ? 0.06f : 0.0f;
@@ -2408,13 +2547,19 @@ void drawSandworm(float t) {
     }
 
     // Raml beyetrash men 3and el atraf
-    drawRectangle(0.014f, 0.008f, x - 0.125f, baseY + 0.010f, 0.97f, 0.80f, 0.55f);
-    drawRectangle(0.010f, 0.008f, x - 0.140f, baseY + 0.022f, 0.97f, 0.80f, 0.55f);
-    drawRectangle(0.012f, 0.008f, x + 0.125f, baseY + 0.014f, 0.97f, 0.80f, 0.55f);
+    drawRectangle(0.014f * size, 0.008f * size, x - 0.125f * size, baseY + 0.010f * size, 0.97f, 0.80f, 0.55f);
+    drawRectangle(0.010f * size, 0.008f * size, x - 0.140f * size, baseY + 0.022f * size, 0.97f, 0.80f, 0.55f);
+    drawRectangle(0.012f * size, 0.008f * size, x + 0.125f * size, baseY + 0.014f * size, 0.97f, 0.80f, 0.55f);
+}
+
+// El sandworm beyemshy bel ra7a 3ala el kseeban el be3eeda (men el yemeen lel shmal)
+void drawSandworm(float t) {
+    float x = 1.1f - fmod(t * 0.025f, 2.2f);
+    drawWormHump(x, farDuneTop(x) - 0.012f, 1.0f);
 }
 
 // 7abbet raml tayra fel hawa (el reya7 bet7arakha le el shmal)
-void drawDust(float t) {
+void drawDust(float t, float minY, float rangeY) {
     float aspect = (float)height / width;
 
     for (int i = 0; i < 36; i++) {
@@ -2422,7 +2567,7 @@ void drawDust(float t) {
         float startX = fmod(i * 0.618f, 1.0f) * 2.1f;
 
         float x = 1.05f - fmod(startX + t * speed, 2.1f);
-        float y = 0.64f + fmod(i * 0.137f, 0.34f) + 0.01f * sin(t * 1.3f + i);
+        float y = minY + fmod(i * 0.377f, 1.0f) * rangeY + 0.01f * sin(t * 1.3f + i);
 
         float size = 0.004f + 0.002f * (i % 3);
         drawRectangle(size * aspect, size, x, y, 1.0f, 0.90f, 0.72f);
@@ -2497,7 +2642,7 @@ void drawArena() {
 
     drawSky();
     drawMoons();
-    drawDust(t);
+    drawDust(t, 0.64f, 0.34f);
 
     // El ard: raml men el ofo2 le ta7t
     drawRectangle(2.0f, 1.62f, 0.0f, -0.19f, 0.80f, 0.60f, 0.38f);
