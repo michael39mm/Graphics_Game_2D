@@ -471,6 +471,7 @@ void drawSprite(int sprite, int anim, int frame, float feetX, float feetY,
     }
 
     // Men pixels le coordinates el shasha (-1 le 1), bel nesba lel width w el height
+    // El sprite beyetkabbar ma3 el window (600 = tool el window el asleya)
     float windowScale = scale * height / 600.0f;
     float pxX = windowScale * 2.0f / width;
     float pxY = windowScale * 2.0f / height;
@@ -1780,7 +1781,7 @@ void drawProjectile(Projectile s) {
 
     if (sprites[shooter].texture != 0)
         y = LANE_Y[s.lane] - FEET_OFFSET +
-            sprites[shooter].muzzleDY * SPRITE_SCALE * 2.0f /  600.0f;
+            sprites[shooter].muzzleDY * SPRITE_SCALE * 2.0f / 600.0f;
     else if (s.height == SHOT_HIGH)
         y += 0.06f;
     else if (s.height == SHOT_LOW)
@@ -2255,79 +2256,173 @@ void drawCards() {
 }
 
 
-void drawRoadMarkings(float laneY)
-{
-    // Draw 8 small white dashes along the road
-    for (int i = 0; i < 8; i++)
-    {
-        float x = -0.78f + i * 0.22f;
+// ==========================================
+// El arena (Arrakis) - kolaha rectangles
+// ==========================================
 
-        drawRectangle(
-            0.10f, 0.012f,  // Dash width and height
-            x, laneY,       // Position
-            0.90f, 0.90f, 0.90f
-        );
+// Dayra men rectangles ofo2eya fo2 ba3d (zay el pixel art)
+// (el 3ard byetsala7 bel aspect 3ashan tefdal dayra mesh beyda)
+void drawCircle(float x, float y, float radius, float r, float g, float b) {
+    int strips = 14;
+    float stripH = 2.0f * radius / strips;
+    float aspect = (float)height / width;
+
+    for (int i = 0; i < strips; i++) {
+        float stripY = y - radius + stripH * (i + 0.5f);
+        float dy = stripY - y;
+        float halfW = sqrt(radius * radius - dy * dy);
+
+        drawRectangle(2.0f * halfW * aspect, stripH + 0.002f, x, stripY, r, g, b);
     }
 }
 
+// Kseeb raml (dune): rectangles fo2 ba3d, kol wa7da ad2a2 men elly ta7taha
+void drawDune(float x, float baseY, float duneWidth, float duneHeight,
+              float r, float g, float b) {
+    int steps = 8;
+    float stepH = duneHeight / steps;
 
+    for (int i = 0; i < steps; i++) {
+        float t = (float)i / steps;              // 0 = ta7t, 1 = fo2
+        float w = duneWidth * sqrt(1.0f - t);    // me2awwar men fo2
 
-void drawCitySkyline()
-{
-    // Distant buildings: muted blue
-    drawRectangle(0.16f, 0.25f, -0.82f, 0.84f,
-                  0.35f, 0.48f, 0.66f);
-
-    drawRectangle(0.12f, 0.38f, -0.63f, 0.90f,
-                  0.40f, 0.52f, 0.68f);
-
-    drawRectangle(0.18f, 0.30f, -0.43f, 0.86f,
-                  0.43f, 0.53f, 0.70f);
-
-    drawRectangle(0.13f, 0.44f, -0.21f, 0.93f,
-                  0.36f, 0.47f, 0.63f);
-
-    drawRectangle(0.20f, 0.28f,  0.03f, 0.85f,
-                  0.44f, 0.54f, 0.70f);
-
-    drawRectangle(0.14f, 0.36f,  0.25f, 0.89f,
-                  0.36f, 0.48f, 0.65f);
-
-    drawRectangle(0.18f, 0.25f,  0.47f, 0.84f,
-                  0.43f, 0.53f, 0.69f);
-
-    drawRectangle(0.14f, 0.42f,  0.68f, 0.92f,
-                  0.34f, 0.45f, 0.62f);
-
-    drawRectangle(0.18f, 0.30f,  0.88f, 0.86f,
-                  0.42f, 0.51f, 0.66f);
+        drawRectangle(w, stepH + 0.002f, x, baseY + stepH * (i + 0.5f), r, g, b);
+    }
 }
 
+// Sama Arrakis: bortoo2any gham2 fo2 w asfar fate7 3and el ofo2
+void drawSky() {
+    float bandR[6] = {0.55f, 0.68f, 0.80f, 0.89f, 0.95f, 0.98f};
+    float bandG[6] = {0.24f, 0.33f, 0.44f, 0.55f, 0.67f, 0.78f};
+    float bandB[6] = {0.12f, 0.15f, 0.19f, 0.25f, 0.34f, 0.47f};
 
-void drawCityWindows()
-{
-    // Windows on the left buildings
-    drawRectangle(0.025f, 0.035f, -0.82f, 0.85f,
-                  1.0f, 0.85f, 0.35f);
+    float top = 1.0f;
+    float horizon = 0.62f;
+    float bandH = (top - horizon) / 6.0f;
 
-    drawRectangle(0.025f, 0.035f, -0.82f, 0.91f,
-                  1.0f, 0.85f, 0.35f);
+    for (int i = 0; i < 6; i++)
+        drawRectangle(2.0f, bandH + 0.002f, 0.0f, top - bandH * (i + 0.5f),
+                      bandR[i], bandG[i], bandB[i]);
+}
 
-    drawRectangle(0.025f, 0.035f, -0.63f, 0.88f,
-                  1.0f, 0.85f, 0.35f);
+// El 2amarein bto3 Arrakis (wa7ed kebeer w wa7ed soghayar)
+void drawMoons() {
+    drawCircle(0.46f, 0.79f, 0.075f, 0.97f, 0.93f, 0.82f);
+    drawCircle(0.44f, 0.81f, 0.020f, 0.88f, 0.83f, 0.72f);  // 7ofra fel 2amar
 
-    drawRectangle(0.025f, 0.035f, -0.63f, 0.94f,
-                  1.0f, 0.85f, 0.35f);
+    drawCircle(-0.17f, 0.88f, 0.035f, 0.92f, 0.86f, 0.76f);
+}
 
-    // Windows on the right buildings
-    drawRectangle(0.025f, 0.035f, 0.68f, 0.88f,
-                  1.0f, 0.85f, 0.35f);
+// El kseeban el be3eeda (fat7a) w el 2orayyeba (agham2)
+void drawDunes() {
+    // Be3eeda
+    drawDune(-0.85f, 0.62f, 0.70f, 0.14f, 0.86f, 0.62f, 0.38f);
+    drawDune(-0.25f, 0.62f, 0.80f, 0.17f, 0.86f, 0.62f, 0.38f);
+    drawDune( 0.35f, 0.62f, 0.70f, 0.12f, 0.86f, 0.62f, 0.38f);
+    drawDune( 0.90f, 0.62f, 0.75f, 0.16f, 0.86f, 0.62f, 0.38f);
 
-    drawRectangle(0.025f, 0.035f, 0.68f, 0.94f,
-                  1.0f, 0.85f, 0.35f);
+    // Sandworm tale3 men el raml (2os men morab3at soghayara)
+    for (int i = 0; i <= 12; i++) {
+        float angle = 3.14159f * i / 12.0f;
+        float wx = 0.15f + 0.075f * cos(angle);
+        float wy = 0.63f + 0.075f * sin(angle);
 
-    drawRectangle(0.025f, 0.035f, 0.88f, 0.85f,
-                  1.0f, 0.85f, 0.35f);
+        drawRectangle(0.028f, 0.035f, wx, wy, 0.46f, 0.31f, 0.21f);
+    }
+
+    // 2orayyeba
+    drawDune(-0.55f, 0.62f, 0.65f, 0.09f, 0.78f, 0.54f, 0.32f);
+    drawDune( 0.05f, 0.62f, 0.55f, 0.07f, 0.78f, 0.54f, 0.32f);
+    drawDune( 0.65f, 0.62f, 0.60f, 0.09f, 0.78f, 0.54f, 0.32f);
+}
+
+// Sa5ra 3aleya (mesa): rectangle te5een w rectangle ad2a2 foo2o
+void drawMesa(float x, float baseY, float mesaWidth, float mesaHeight) {
+    drawRectangle(mesaWidth, mesaHeight, x, baseY + mesaHeight / 2.0f,
+                  0.45f, 0.27f, 0.17f);
+
+    drawRectangle(mesaWidth * 0.75f, mesaHeight * 0.25f, x,
+                  baseY + mesaHeight + mesaHeight * 0.125f,
+                  0.45f, 0.27f, 0.17f);
+
+    // Nour el shams 3al gamb el shmal
+    drawRectangle(mesaWidth * 0.2f, mesaHeight, x - mesaWidth * 0.4f,
+                  baseY + mesaHeight / 2.0f, 0.60f, 0.38f, 0.24f);
+}
+
+// El fasel el sa5ry ben el lanes (badal el sidewalk)
+void drawRockRidge(float y, float ridgeHeight) {
+    // Dell gham2
+    drawRectangle(2.0f, ridgeHeight, 0.0f, y, 0.33f, 0.21f, 0.14f);
+
+    // El sa5r nafso
+    drawRectangle(2.0f, ridgeHeight * 0.65f, 0.0f, y + ridgeHeight * 0.05f,
+                  0.52f, 0.35f, 0.23f);
+
+    // Nour 3ala el 7arf elly fo2
+    drawRectangle(2.0f, 0.010f, 0.0f, y + ridgeHeight * 0.35f,
+                  0.68f, 0.50f, 0.33f);
+
+    // 7agar soghayar w spice (no2at bortoo2any)
+    for (int i = 0; i < 10; i++) {
+        float x = -0.92f + i * 0.2f;
+
+        drawRectangle(0.03f, 0.012f, x, y - ridgeHeight * 0.1f,
+                      0.40f, 0.26f, 0.17f);
+
+        if (i % 3 == 1)
+            drawRectangle(0.010f, 0.010f, x + 0.07f, y + ridgeHeight * 0.12f,
+                          1.0f, 0.55f, 0.15f);
+    }
+}
+
+// Lane wa7ed: raml metgamma3 w 3aleh mawgat soghayara
+void drawSandLane(float laneY) {
+    // Dell ta7t el lane
+    drawRectangle(1.89f, 0.30f, 0.0f, laneY - 0.012f, 0.33f, 0.22f, 0.15f);
+
+    // El raml nafso
+    drawRectangle(1.85f, 0.28f, 0.0f, laneY, 0.54f, 0.40f, 0.28f);
+
+    // 7arf fate7 fo2
+    drawRectangle(1.82f, 0.012f, 0.0f, laneY + 0.125f, 0.62f, 0.47f, 0.33f);
+
+    // Mawgat el raml (kol wa7da 3 rectangles zay "~")
+    for (int row = 0; row < 2; row++) {
+        float y = laneY + 0.06f - row * 0.12f;
+        float shift = row * 0.11f;
+
+        for (int i = 0; i < 8; i++) {
+            float x = -0.80f + i * 0.22f + shift;
+
+            drawRectangle(0.04f, 0.008f, x,         y,          0.45f, 0.32f, 0.22f);
+            drawRectangle(0.04f, 0.008f, x + 0.04f, y + 0.008f, 0.45f, 0.32f, 0.22f);
+            drawRectangle(0.04f, 0.008f, x + 0.08f, y,          0.45f, 0.32f, 0.22f);
+        }
+    }
+}
+
+// El arena kolaha (bnersemha awel 7aga fe kol frame)
+void drawArena() {
+    drawSky();
+    drawMoons();
+
+    // El ard: raml men el ofo2 le ta7t
+    drawRectangle(2.0f, 1.62f, 0.0f, -0.19f, 0.80f, 0.60f, 0.38f);
+
+    drawMesa(-0.18f, 0.62f, 0.12f, 0.12f);
+    drawMesa( 0.97f, 0.62f, 0.10f, 0.08f);
+    drawDunes();
+
+    // El fasel elly fo2 el lanes, w el fawasel elly benhom, w elly ta7t
+    drawRockRidge(0.585f, 0.07f);
+    drawRockRidge(0.22f, 0.085f);
+    drawRockRidge(-0.16f, 0.085f);
+    drawRockRidge(-0.54f, 0.085f);
+    drawRockRidge(-0.92f, 0.085f);
+
+    for (int i = 0; i < 4; i++)
+        drawSandLane(LANE_Y[i]);
 }
 
 
@@ -2377,148 +2472,9 @@ int main() {
         
         
         // ==========================================
-        // 1. SKY
+        // 1. EL ARENA (sama, kseeban, sa5r, lanes)
         // ==========================================
-        drawRectangle(2.0f, 2.0f, 0.0f, 0.0f,
-                      0.35f, 0.68f, 0.95f);
-
-
-        // ==========================================
-        // 2. CITY PAVEMENT
-        // Covers everything below the skyline
-        // ==========================================
-        drawRectangle(2.0f, 1.70f, 0.0f, -0.15f,
-                      0.43f, 0.45f, 0.46f);
-
-
-        // ==========================================
-        // 3. CITY SKYLINE AND WINDOWS
-        // ==========================================
-        drawCitySkyline();
-        drawCityWindows();
-
-
-        // ==========================================
-        // 4. TOP SIDEWALK
-        // Dark backing creates a raised curb effect
-        // ==========================================
-        drawRectangle(1.94f, 0.15f, 0.0f, 0.625f,
-                      0.28f, 0.29f, 0.30f);
-
-        drawRectangle(1.90f, 0.11f, 0.0f, 0.63f,
-                      0.65f, 0.66f, 0.64f);
-
-        // Thin highlight on top edge
-        drawRectangle(1.88f, 0.012f, 0.0f, 0.675f,
-                      0.78f, 0.79f, 0.76f);
-
-
-        // ==========================================
-        // 5. SHADOWS UNDER THE FOUR ROADS
-        // Draw these BEFORE the asphalt
-        // ==========================================
-        drawRectangle(1.89f, 0.30f, 0.0f,  0.398f,
-                      0.17f, 0.18f, 0.19f);
-
-        drawRectangle(1.89f, 0.30f, 0.0f,  0.018f,
-                      0.17f, 0.18f, 0.19f);
-
-        drawRectangle(1.89f, 0.30f, 0.0f, -0.362f,
-                      0.17f, 0.18f, 0.19f);
-
-        drawRectangle(1.89f, 0.30f, 0.0f, -0.742f,
-                      0.17f, 0.18f, 0.19f);
-
-
-        // ==========================================
-        // 6. ASPHALT SURFACES
-        // ==========================================
-        drawRectangle(1.85f, 0.28f, 0.0f,  0.41f,
-                      0.25f, 0.27f, 0.30f);
-
-        drawRectangle(1.85f, 0.28f, 0.0f,  0.03f,
-                      0.25f, 0.27f, 0.30f);
-
-        drawRectangle(1.85f, 0.28f, 0.0f, -0.35f,
-                      0.25f, 0.27f, 0.30f);
-
-        drawRectangle(1.85f, 0.28f, 0.0f, -0.73f,
-                      0.25f, 0.27f, 0.30f);
-
-
-        // ==========================================
-        // 7. SUBTLE ROAD EDGE HIGHLIGHTS
-        // ==========================================
-        drawRectangle(1.82f, 0.012f, 0.0f,  0.535f,
-                      0.34f, 0.36f, 0.39f);
-
-        drawRectangle(1.82f, 0.012f, 0.0f,  0.155f,
-                      0.34f, 0.36f, 0.39f);
-
-        drawRectangle(1.82f, 0.012f, 0.0f, -0.225f,
-                      0.34f, 0.36f, 0.39f);
-
-        drawRectangle(1.82f, 0.012f, 0.0f, -0.605f,
-                      0.34f, 0.36f, 0.39f);
-
-
-        // ==========================================
-        // 8. RAISED SIDEWALKS BETWEEN ROAD LANES
-        // ==========================================
-
-        // Sidewalk 1
-        drawRectangle(1.94f, 0.085f, 0.0f,  0.22f,
-                      0.28f, 0.29f, 0.30f);
-
-        drawRectangle(1.90f, 0.055f, 0.0f,  0.22f,
-                      0.63f, 0.64f, 0.62f);
-
-        drawRectangle(1.88f, 0.010f, 0.0f,  0.243f,
-                      0.78f, 0.79f, 0.76f);
-
-
-        // Sidewalk 2
-        drawRectangle(1.94f, 0.085f, 0.0f, -0.16f,
-                      0.28f, 0.29f, 0.30f);
-
-        drawRectangle(1.90f, 0.055f, 0.0f, -0.16f,
-                      0.63f, 0.64f, 0.62f);
-
-        drawRectangle(1.88f, 0.010f, 0.0f, -0.137f,
-                      0.78f, 0.79f, 0.76f);
-
-
-        // Sidewalk 3
-        drawRectangle(1.94f, 0.085f, 0.0f, -0.54f,
-                      0.28f, 0.29f, 0.30f);
-
-        drawRectangle(1.90f, 0.055f, 0.0f, -0.54f,
-                      0.63f, 0.64f, 0.62f);
-
-        drawRectangle(1.88f, 0.010f, 0.0f, -0.517f,
-                      0.78f, 0.79f, 0.76f);
-
-
-        // ==========================================
-        // 9. BOTTOM SIDEWALK
-        // ==========================================
-        drawRectangle(1.94f, 0.085f, 0.0f, -0.92f,
-                      0.28f, 0.29f, 0.30f);
-
-        drawRectangle(1.90f, 0.055f, 0.0f, -0.92f,
-                      0.63f, 0.64f, 0.62f);
-
-        drawRectangle(1.88f, 0.010f, 0.0f, -0.897f,
-                      0.78f, 0.79f, 0.76f);
-
-
-        // ==========================================
-        // 10. ROAD MARKINGS
-        // ==========================================
-        drawRoadMarkings( 0.41f);
-        drawRoadMarkings( 0.03f);
-        drawRoadMarkings(-0.35f);
-        drawRoadMarkings(-0.73f);
+        drawArena();
 
 
         // ==========================================
