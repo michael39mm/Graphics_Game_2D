@@ -6,6 +6,11 @@
 #include <cstdlib>
 #include <cmath>
 #include <string>
+
+// Lazem el define da yeb2a fe file wa7ed bas (3ashan el stb yetkteb hena)
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 // el wa2t elly 3ada men a5er frame (bel sec)
 float deltaTime = 0.0f;
 float lastFrameTime = 0.0f;
@@ -59,6 +64,11 @@ struct Player {
     float attackTimer;
     float jumpTimer;  // fadel kam sanya fel natta (0 = mesh nate)
     float duckTimer;  // fadel kam sanya fel duck (0 = mesh 3amel duck)
+
+    // El animation (el rasm bas - mafeesh 3alaqa bel mechanics)
+    int animState;    // el animation elly shaghala (ANIM_IDLE, ANIM_WALK, ...)
+    float animTime;   // men emta bada2t el animation di (bel sanya)
+    bool attacked;    // darab fel frame da (3ashan nebda2 animation el darb)
 };
 
 // Kart el enemy
@@ -69,6 +79,11 @@ struct Enemy {
     int health;
     int maxHealth;
     float attackTimer;
+
+    // El animation (el rasm bas - mafeesh 3alaqa bel mechanics)
+    int animState;
+    float animTime;
+    bool attacked;
 };
 
 // Kol el players w el enemies elly fel game
@@ -226,6 +241,272 @@ void main() {
     colors = vec4(mix(vertexColor, vec3(1.0, 0.0, 0.0), redAmount), 1.0);
 }
 )";
+
+// ==========================================
+// El sprites (el animations men el atlases)
+// ==========================================
+
+// Shader el sprites: nafs fekret el rectangle bas bel soora (uv) badal el lon
+const char* TexVertexShaderCode = R"(
+#version 330 core
+
+layout (location = 0) in vec2 Vpos;
+layout (location = 1) in vec2 Vuv;
+
+out vec2 uv;
+
+void main() {
+    gl_Position = vec4(Vpos, 0.0, 1.0);
+    uv = Vuv;
+}
+)";
+
+const char* TexFragmentShaderCode = R"(
+#version 330 core
+in vec2 uv;
+out vec4 colors;
+
+uniform sampler2D atlas;
+uniform float redAmount;   // el darb: kol ma yezeed yeb2a a7mar
+uniform float greyAmount;  // el card el locked: ramady
+
+void main() {
+    // El rgb hena already marsoom fe el alpha (3ashan el 7awaf)
+    vec4 c = texture(atlas, uv);
+
+    float grey = dot(c.rgb, vec3(0.3, 0.59, 0.11)) * 0.7;
+    vec3 rgb = mix(c.rgb, vec3(grey), greyAmount);
+    rgb = mix(rgb, vec3(1.0, 0.0, 0.0) * c.a, redAmount);
+
+    colors = vec4(rgb, c.a);
+}
+)";
+
+// El row bta3 kol animation gowa el atlas (nafs el tarteeb fe kol el atlases)
+const int ANIM_IDLE   = 0;
+const int ANIM_WALK   = 1;
+const int ANIM_RUN    = 2;
+const int ANIM_CROUCH = 3;
+const int ANIM_JUMP   = 4;
+const int ANIM_ATTACK = 5;
+
+// Kol animation feeha 8 frames
+const int ANIM_FRAMES = 8;
+
+// Anwa3 el sprites (kol wa7ed leh atlas)
+const int SPRITE_ATREIDES = 0;  // player melee
+const int SPRITE_FREMEN   = 1;  // player ranged
+const int SPRITE_PILOT    = 2;  // enemy easy (byedrab men fo2)
+const int SPRITE_BRUTE    = 3;  // enemy medium (byedrab men ta7t)
+const int SPRITE_OFFICER  = 4;  // enemy hard (melee)
+const int SPRITE_COUNT    = 5;
+
+// Kol el ma3loomat 3an atlas wa7ed (da elly kan mo5talef bein el demos)
+struct SpriteInfo {
+    const char* file;
+    int cellW;          // 3ard el frame (bel pixels)
+    int cellH;          // tool el frame
+    float anchorX;      // makan el rgleen gowa el frame (x)
+    float footY[6];     // makan el rgleen gowa el frame (y) le kol animation
+    float fps[6];       // sor3et kol animation (frame fel sanya)
+    int hitFrame;       // el frame elly el darba btewsal feeha (el talka btetla3 / el sayf yedrab)
+    float muzzleDY;     // ertefa3 el mawsoura foo2 el rgleen (lel talakat)
+
+    // Bet3abba lama el game yeshta3'al
+    GLuint texture;
+    int imageW;
+    int imageH;
+};
+
+SpriteInfo sprites[SPRITE_COUNT] = {
+    // Atreides (melee player)
+    { "assets/atreides_atlas.png", 181, 181, 95.0f,
+      {160, 160, 160, 160, 160, 160},
+      {6, 14, 18, 18, 10, 14},
+      4, 0.0f, 0, 0, 0 },
+
+    // Fremen (ranged player)
+    { "assets/fremen_atlas.png", 181, 181, 91.0f,
+      {160, 160, 160, 160, 160, 160},
+      {6, 13, 18, 18, 10, 12},
+      4, 80.0f, 0, 0, 0 },
+
+    // Pilot (enemy easy)
+    { "assets/pilot_atlas.png", 181, 181, 94.0f,
+      {158, 158, 157, 159, 158, 158},
+      {8, 15, 18, 18, 10, 12},
+      4, 77.0f, 0, 0, 0 },
+
+    // Brute (enemy medium)
+    { "assets/brute2_atlas.png", 181, 181, 96.0f,
+      {161, 158, 156, 159, 160, 158},
+      {6, 11, 14, 14, 9, 9},
+      4, 32.0f, 0, 0, 0 },
+
+    // Officer (enemy hard)
+    { "assets/officer_atlas.png", 201, 181, 98.0f,
+      {158, 158, 155, 157, 157, 158},
+      {6, 12, 16, 18, 10, 12},
+      4, 0.0f, 0, 0, 0 },
+};
+
+// Takbeer el sprite (1.0 = el sora zay ma heya bel pixels, 0.5 = nos)
+float SPRITE_SCALE = 0.6f;
+
+// Takbeer el sprite gowa el cards (asghar men el game)
+float CARD_SPRITE_SCALE = 0.4f;
+
+// El rgleen ta7t nos el lane be kam (3ashan el rasm yeb2a gowa el lane)
+float FEET_OFFSET = 0.13f;
+
+// Shader el sprites w el VAO/VBO bto3o
+GLuint TexProgram = 0;
+GLuint TexVAO = 0;
+GLuint TexVBO = 0;
+GLint TexRedLocation = -1;
+GLint TexGreyLocation = -1;
+
+// Anhy sprite lel player da (-1 law mafeesh sprite leh, zay el defense)
+int playerSprite(int type) {
+    if (type == PLAYER_MELEE)
+        return SPRITE_ATREIDES;
+
+    if (type == PLAYER_RANGED)
+        return SPRITE_FREMEN;
+
+    return -1;
+}
+
+// Anhy sprite lel enemy da
+int enemySprite(int type) {
+    if (type == ENEMY_EASY)
+        return SPRITE_PILOT;
+
+    if (type == ENEMY_MEDIUM)
+        return SPRITE_BRUTE;
+
+    return SPRITE_OFFICER;
+}
+
+// Nload el atlas men el file l el vram (bnegarrab el path men aktar men makan)
+bool loadSpriteTexture(SpriteInfo& s) {
+    stbi_set_flip_vertically_on_load(false);
+
+    const char* prefixes[] = { "", "../", "../../", "../../../" };
+    unsigned char* pixels = nullptr;
+    int channels = 0;
+
+    for (int i = 0; i < 4 && pixels == nullptr; i++) {
+        std::string path = std::string(prefixes[i]) + s.file;
+        pixels = stbi_load(path.c_str(), &s.imageW, &s.imageH, &channels, 4);
+    }
+
+    if (pixels == nullptr) {
+        std::cerr << "Could not load " << s.file << ": "
+                  << stbi_failure_reason() << '\n';
+        return false;
+    }
+
+    // Narsom el rgb fel alpha (premultiply) 3ashan el 7awaf mayb2ash feeha lon waser
+    for (int i = 0; i < s.imageW * s.imageH; i++) {
+        unsigned char* p = pixels + i * 4;
+        p[0] = (unsigned char)(p[0] * p[3] / 255);
+        p[1] = (unsigned char)(p[1] * p[3] / 255);
+        p[2] = (unsigned char)(p[2] * p[3] / 255);
+    }
+
+    glGenTextures(1, &s.texture);
+    glBindTexture(GL_TEXTURE_2D, s.texture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, s.imageW, s.imageH, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, pixels);
+
+    // El sora hatetersem asghar men el asl: mipmaps 3ashan tebqa nadeefa
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glGenerateMipmap(GL_TEXTURE_2D);
+
+    stbi_image_free(pixels);
+    return true;
+}
+
+// Nload kol el atlases (law wa7ed fashal, el game beyersem rectangle badalo)
+void loadSprites() {
+    for (int i = 0; i < SPRITE_COUNT; i++)
+        loadSpriteTexture(sprites[i]);
+}
+
+// Anhy frame el mafrood yetersem (el loop lel idle/walk/run, w el ba2y yewa2af 3and a5er frame)
+int spriteFrame(int sprite, int anim, float animTime) {
+    int frame = (int)(animTime * sprites[sprite].fps[anim]);
+
+    if (anim == ANIM_IDLE || anim == ANIM_WALK || anim == ANIM_RUN)
+        return frame % ANIM_FRAMES;
+
+    if (frame >= ANIM_FRAMES)
+        frame = ANIM_FRAMES - 1;
+
+    return frame;
+}
+
+// Nersem frame wa7da men el atlas, w el rgleen 3ala (feetX, feetY)
+void drawSprite(int sprite, int anim, int frame, float feetX, float feetY,
+                bool faceRight, float red, float grey, float scale) {
+    SpriteInfo& s = sprites[sprite];
+
+    // El UV: anhy gozaa men el atlas (row = el animation, column = el frame)
+    float u0 = (float)(frame * s.cellW) / s.imageW;
+    float u1 = (float)((frame + 1) * s.cellW) / s.imageW;
+    float v0 = (float)(anim * s.cellH) / s.imageH;
+    float v1 = (float)((anim + 1) * s.cellH) / s.imageH;
+
+    // Law rayeh shimal: nel2eb el UV w el rgleen yeb2o men el naha el tanya
+    float anchorX = s.anchorX;
+    if (!faceRight) {
+        float t = u0;
+        u0 = u1;
+        u1 = t;
+        anchorX = s.cellW - s.anchorX;
+    }
+
+    // Men pixels le coordinates el shasha (-1 le 1), bel nesba lel width w el height
+    float windowScale = scale * height / 600.0f;
+    float pxX = windowScale * 2.0f / width;
+    float pxY = windowScale * 2.0f / height;
+
+    float left   = feetX - anchorX * pxX;
+    float right  = left + s.cellW * pxX;
+    float bottom = feetY - (s.cellH - (s.footY[anim] + 1.0f)) * pxY;
+    float top    = bottom + s.cellH * pxY;
+
+    float vertices[] = {
+        left,  top,    u0, v0,
+        left,  bottom, u0, v1,
+        right, top,    u1, v0,
+        right, bottom, u1, v1
+    };
+
+    glUseProgram(TexProgram);
+    glUniform1f(TexRedLocation, red);
+    glUniform1f(TexGreyLocation, grey);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, s.texture);
+
+    // El sora marsooma fel alpha: nesta5dem blend mo5talef lel sprites bas
+    glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+
+    glBindVertexArray(TexVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, TexVBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glBindVertexArray(0);
+
+    // Nraga3 kol 7aga zay ma kant lel rectangles
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    glUseProgram(ShaderProgram);
+}
 
 // Window resize callback
 void framebufferSizeCallback(
@@ -456,6 +737,10 @@ bool initialize() {
     glfwGetFramebufferSize(Window, &width, &height);
     glViewport(0, 0, width, height);
 
+    // Blending 3ashan el 7awaf el shafafa fel sprites matetersemsh sooda
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     glfwSetFramebufferSizeCallback(Window, framebufferSizeCallback);
     glfwSetMouseButtonCallback(Window, mouseButtonCallback);
     glfwSetKeyCallback(Window, keyCallback);
@@ -591,6 +876,85 @@ glEnableVertexAttribArray(1);
 
 glBindVertexArray(0);
 
+    // ===== Shader el sprites =====
+    GLuint TexVertexShader =
+        compileShader(GL_VERTEX_SHADER, TexVertexShaderCode);
+
+    GLuint TexFragmentShader =
+        compileShader(GL_FRAGMENT_SHADER, TexFragmentShaderCode);
+
+    if (TexVertexShader == 0 || TexFragmentShader == 0) {
+        if (TexVertexShader != 0)
+            glDeleteShader(TexVertexShader);
+
+        if (TexFragmentShader != 0)
+            glDeleteShader(TexFragmentShader);
+
+        return false;
+    }
+
+    TexProgram = glCreateProgram();
+
+    glAttachShader(TexProgram, TexVertexShader);
+    glAttachShader(TexProgram, TexFragmentShader);
+    glLinkProgram(TexProgram);
+
+    glGetProgramiv(TexProgram, GL_LINK_STATUS, &success);
+
+    if (!success) {
+        char log[512];
+
+        glGetProgramInfoLog(TexProgram, 512, nullptr, log);
+        std::cerr << "Sprite shader link error:\n" << log << '\n';
+
+        glDeleteShader(TexVertexShader);
+        glDeleteShader(TexFragmentShader);
+        glDeleteProgram(TexProgram);
+
+        TexProgram = 0;
+        return false;
+    }
+
+    glDeleteShader(TexVertexShader);
+    glDeleteShader(TexFragmentShader);
+
+    TexRedLocation = glGetUniformLocation(TexProgram, "redAmount");
+    TexGreyLocation = glGetUniformLocation(TexProgram, "greyAmount");
+
+    // El atlas fel texture unit 0
+    glUseProgram(TexProgram);
+    glUniform1i(glGetUniformLocation(TexProgram, "atlas"), 0);
+    glUseProgram(0);
+
+    // VAO/VBO lel sprites: 4 vertices, kol wa7ed (x, y, u, v)
+    glGenVertexArrays(1, &TexVAO);
+    glGenBuffers(1, &TexVBO);
+
+    glBindVertexArray(TexVAO);
+
+    glBindBuffer(GL_ARRAY_BUFFER, TexVBO);
+    glBufferData(
+        GL_ARRAY_BUFFER,
+        4 * 4 * sizeof(float),
+        nullptr,
+        GL_DYNAMIC_DRAW
+    );
+
+    // Nafs el EBO bta3 el rectangles (nafs el 6 indices)
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+
+    // Position attribute: x, y
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE,
+                          4 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // UV attribute: u, v
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE,
+                          4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindVertexArray(0);
+
     return true;
 }
 
@@ -670,6 +1034,20 @@ void cleanup() {
     if (VAO != 0)
         glDeleteVertexArrays(1, &VAO);
 
+    for (int i = 0; i < SPRITE_COUNT; i++) {
+        if (sprites[i].texture != 0)
+            glDeleteTextures(1, &sprites[i].texture);
+    }
+
+    if (TexVBO != 0)
+        glDeleteBuffers(1, &TexVBO);
+
+    if (TexVAO != 0)
+        glDeleteVertexArrays(1, &TexVAO);
+
+    if (TexProgram != 0)
+        glDeleteProgram(TexProgram);
+
     if (ShaderProgram != 0)
         glDeleteProgram(ShaderProgram);
 
@@ -720,6 +1098,9 @@ void spawnPlayer(int type, int lane) {
     p.attackTimer = 0.0f;
     p.jumpTimer = 0.0f;
     p.duckTimer = 0.0f;
+    p.animState = ANIM_IDLE;
+    p.animTime = 0.0f;
+    p.attacked = false;
 
     if (type == PLAYER_DEFENSE)
         p.maxHealth = 7;
@@ -737,6 +1118,9 @@ void spawnEnemy(int type, int lane) {
     e.lane = lane;
     e.x = LANE_RIGHT - 0.05f;
     e.attackTimer = 0.0f;
+    e.animState = ANIM_IDLE;
+    e.animTime = 0.0f;
+    e.attacked = false;
 
     if (type == ENEMY_HARD)
         e.maxHealth = 7;
@@ -880,8 +1264,8 @@ void getPlayerLook(int type, float* w, float* h, float* r, float* g, float* b) {
     }
 }
 
-// Rasm mo2akat lel player (el shakl el 7a2e2y ba3den)
-void drawPlayer(Player p) {
+// Rasm el player bel rectangle (lel defense, w law el sprite mat-load-ash)
+void drawPlayerRectangle(Player p) {
     // Law nate: byetla3 w yenzel (sin bta3mel 2os)
     float jumpY = 0.0f;
     if (p.jumpTimer > 0.0f) {
@@ -916,8 +1300,8 @@ void drawPlayer(Player p) {
                   0.2f, 0.9f, 0.3f);
 }
 
-// Rasm mo2akat lel enemy
-void drawEnemy(Enemy e) {
+// Rasm el enemy bel rectangle (law el sprite mat-load-ash)
+void drawEnemyRectangle(Enemy e) {
     setOffset(e.x, LANE_Y[e.lane]);
 
     // Kol ma el health ye2el yeb2a a7mar aktar
@@ -936,6 +1320,66 @@ void drawEnemy(Enemy e) {
 
     // Bar bortoo2any fo2 el enemy
     drawHealthBar(e.x, LANE_Y[e.lane] + 0.125f, e.health, e.maxHealth,
+                  1.0f, 0.55f, 0.1f);
+}
+
+
+// Rasm el player (sprite law leh, law la2 rectangle)
+void drawPlayer(Player p) {
+    int sprite = playerSprite(p.type);
+
+    // El defense mafeesh leh sprite, w law el atlas mat-load-ash nersem el rectangle
+    if (sprite == -1 || sprites[sprite].texture == 0) {
+        drawPlayerRectangle(p);
+        return;
+    }
+
+    // Law nate: byetla3 w yenzel (nafs el sin bta3 el rectangle)
+    float jumpY = 0.0f;
+    int anim = p.animState;
+    int frame = spriteFrame(sprite, anim, p.animTime);
+
+    if (p.jumpTimer > 0.0f) {
+        float progress = 1.0f - p.jumpTimer / JUMP_TIME;
+        jumpY = JUMP_HEIGHT * sin(progress * 3.14159f);
+
+        // El natta: el frame beyetghayar 7asab el wa2t fel hawa
+        anim = ANIM_JUMP;
+        frame = (int)(progress * ANIM_FRAMES);
+        if (frame >= ANIM_FRAMES)
+            frame = ANIM_FRAMES - 1;
+    }
+
+    // Kol ma el health ye2el yeb2a a7mar aktar
+    float red = (1.0f - (float)p.health / p.maxHealth) * 0.8f;
+
+    drawSprite(sprite, anim, frame, p.x, LANE_Y[p.lane] - FEET_OFFSET + jumpY,
+               true, red, 0.0f, SPRITE_SCALE);
+
+    // Bar a5dar fo2 el player (byetla3 ma3ah law nate)
+    drawHealthBar(p.x, LANE_Y[p.lane] + 0.17f + jumpY, p.health, p.maxHealth,
+                  0.2f, 0.9f, 0.3f);
+}
+
+// Rasm el enemy (sprite law leh, law la2 rectangle) - el enemies bytsh shmal
+void drawEnemy(Enemy e) {
+    int sprite = enemySprite(e.type);
+
+    if (sprites[sprite].texture == 0) {
+        drawEnemyRectangle(e);
+        return;
+    }
+
+    int frame = spriteFrame(sprite, e.animState, e.animTime);
+
+    // Kol ma el health ye2el yeb2a a7mar aktar
+    float red = (1.0f - (float)e.health / e.maxHealth) * 0.8f;
+
+    drawSprite(sprite, e.animState, frame, e.x, LANE_Y[e.lane] - FEET_OFFSET,
+               false, red, 0.0f, SPRITE_SCALE);
+
+    // Bar bortoo2any fo2 el enemy
+    drawHealthBar(e.x, LANE_Y[e.lane] + 0.17f, e.health, e.maxHealth,
                   1.0f, 0.55f, 0.1f);
 }
 
@@ -1090,12 +1534,14 @@ void updatePlayerAttacks() {
             else if (players[i].attackTimer >= MELEE_ATTACK_TIME) {
                 enemies[e].health -= 1;
                 players[i].attackTimer = 0.0f;
+                players[i].attacked = true;
             }
         }
         else if (players[i].type == PLAYER_RANGED) {
             // Byedrab 3ala tool 7atta law mafeesh enemies
             if (players[i].attackTimer >= RANGED_ATTACK_TIME) {
                 players[i].attackTimer -= RANGED_ATTACK_TIME;
+                players[i].attacked = true;
                 fireProjectile(players[i].lane, players[i].x,
                                PROJECTILE_SPEED, 1, true, SHOT_MIDDLE);
             }
@@ -1119,10 +1565,12 @@ void updateEnemyAttacks() {
                 // El hard byedrab 2 damage
                 players[p].health -= 2;
                 enemies[i].attackTimer = 0.0f;
+                enemies[i].attacked = true;
             }
         }
         else if (enemies[i].attackTimer >= ENEMY_SHOOT_TIME) {
             enemies[i].attackTimer -= ENEMY_SHOOT_TIME;
+            enemies[i].attacked = true;
 
             int height = SHOT_LOW;
             if (enemies[i].type == ENEMY_EASY)
@@ -1132,6 +1580,138 @@ void updateEnemyAttacks() {
                            -PROJECTILE_SPEED, 1, false, height);
         }
     }
+}
+
+// El animations bas (mafeesh 3alaqa bel mechanics): kol player byekhtar el animation bta3o
+// men el 7aga elly by3melha (natta, duck, darb, wa2ef, mashy)
+void updatePlayerAnimations() {
+    for (int i = 0; i < (int)players.size(); i++) {
+        Player& p = players[i];
+        int sprite = playerSprite(p.type);
+
+        // El defense mafeesh leh sprite
+        if (sprite == -1)
+            continue;
+
+        SpriteInfo& s = sprites[sprite];
+
+        // Kam sanya men awel el darba le7ad el frame elly btewsal feeha
+        float windup = s.hitFrame / s.fps[ANIM_ATTACK];
+
+        // El animation el darb lessa shaghala?
+        bool attackPlaying = p.animState == ANIM_ATTACK &&
+                             p.animTime * s.fps[ANIM_ATTACK] < ANIM_FRAMES;
+
+        int want = ANIM_IDLE;
+        float startTime = 0.0f;
+
+        if (p.jumpTimer > 0.0f)
+            want = ANIM_JUMP;
+        else if (p.duckTimer > 0.0f)
+            want = ANIM_CROUCH;
+        else if (attackPlaying)
+            want = ANIM_ATTACK;
+        else {
+            // Wa2ef (5abat fe enemy) wala mashy
+            if (playerIsBlocked(p))
+                want = ANIM_IDLE;
+            else
+                want = ANIM_WALK;
+
+            // Kam sanya lel darba el gaya (el darba btewsal fel frame el hitFrame)
+            float timeLeft = 99.0f;
+
+            if (p.type == PLAYER_RANGED)
+                timeLeft = RANGED_ATTACK_TIME - p.attackTimer;
+            else if (findTouchingEnemy(p) != -1)
+                timeLeft = MELEE_ATTACK_TIME - p.attackTimer;
+
+            // Law darab fel frame da, el darba hasalet delwa2ty
+            if (p.attacked)
+                timeLeft = 0.0f;
+
+            // Nebda2 el animation 2abl el darba be shwaya 3ashan el darba tewsal fel frame el sa7
+            if (timeLeft <= windup) {
+                want = ANIM_ATTACK;
+                startTime = windup - timeLeft;
+
+                if (startTime > windup)
+                    startTime = windup;
+            }
+        }
+
+        p.attacked = false;
+
+        // Law el animation et3'ayyaret (aw el darb el gedeed), nebda2 men el awel
+        if (want != p.animState || (want == ANIM_ATTACK && !attackPlaying)) {
+            p.animState = want;
+            p.animTime = startTime;
+        }
+        else
+            p.animTime += deltaTime;
+    }
+}
+
+// Nafs el fekra lel enemies
+void updateEnemyAnimations() {
+    for (int i = 0; i < (int)enemies.size(); i++) {
+        Enemy& e = enemies[i];
+        SpriteInfo& s = sprites[enemySprite(e.type)];
+
+        float windup = s.hitFrame / s.fps[ANIM_ATTACK];
+
+        bool attackPlaying = e.animState == ANIM_ATTACK &&
+                             e.animTime * s.fps[ANIM_ATTACK] < ANIM_FRAMES;
+
+        int want = ANIM_IDLE;
+        float startTime = 0.0f;
+
+        if (attackPlaying)
+            want = ANIM_ATTACK;
+        else {
+            // Wa2ef (5abat fe player), el hard bygry, el ba2y mashy
+            if (enemyIsBlocked(e))
+                want = ANIM_IDLE;
+            else if (e.type == ENEMY_HARD)
+                want = ANIM_RUN;
+            else
+                want = ANIM_WALK;
+
+            float timeLeft = 99.0f;
+
+            if (e.type == ENEMY_HARD) {
+                if (findTouchingPlayer(e) != -1)
+                    timeLeft = MELEE_ATTACK_TIME - e.attackTimer;
+            }
+            else
+                timeLeft = ENEMY_SHOOT_TIME - e.attackTimer;
+
+            if (e.attacked)
+                timeLeft = 0.0f;
+
+            if (timeLeft <= windup) {
+                want = ANIM_ATTACK;
+                startTime = windup - timeLeft;
+
+                if (startTime > windup)
+                    startTime = windup;
+            }
+        }
+
+        e.attacked = false;
+
+        if (want != e.animState || (want == ANIM_ATTACK && !attackPlaying)) {
+            e.animState = want;
+            e.animTime = startTime;
+        }
+        else
+            e.animTime += deltaTime;
+    }
+}
+
+void updateAnimations() {
+    updatePlayerAnimations();
+    updateEnemyAnimations();
 }
 
 // Nem4y el talakat w neshoof 5abatet f 7ad wala la2
@@ -1190,8 +1770,18 @@ void updateProjectiles() {
 void drawProjectile(Projectile s) {
     float y = LANE_Y[s.lane];
 
-    // Talka men fo2 aw men ta7t
+    // Ertefa3 el talka = ertefa3 el mawsoura bta3et el sprite elly darabha
+    // (el player el ranged, el pilot men fo2, el brute men ta7t)
+    int shooter = SPRITE_FREMEN;
     if (s.height == SHOT_HIGH)
+        shooter = SPRITE_PILOT;
+    else if (s.height == SHOT_LOW)
+        shooter = SPRITE_BRUTE;
+
+    if (sprites[shooter].texture != 0)
+        y = LANE_Y[s.lane] - FEET_OFFSET +
+            sprites[shooter].muzzleDY * SPRITE_SCALE * 2.0f /  600.0f;
+    else if (s.height == SHOT_HIGH)
         y += 0.06f;
     else if (s.height == SHOT_LOW)
         y -= 0.06f;
@@ -1643,10 +2233,16 @@ void drawCards() {
         // Wesh el card
         drawCardPart(CARD_W, CARD_H, x, CARD_Y, 0.85f, 0.8f, 0.6f, locked);
 
-        // Soret el player
+        // Soret el player (el sprite law mawgood, law la2 el rectangle)
         float w, h, r, g, b;
         getPlayerLook(i, &w, &h, &r, &g, &b);
-        drawCardPart(w * 0.8f, h * 0.8f, x, CARD_Y + 0.03f, r, g, b, locked);
+
+        int cardSprite = playerSprite(i);
+        if (cardSprite != -1 && sprites[cardSprite].texture != 0)
+            drawSprite(cardSprite, ANIM_IDLE, 0, x, CARD_Y - 0.045f,
+                       true, 0.0f, locked ? 1.0f : 0.0f, CARD_SPRITE_SCALE);
+        else
+            drawCardPart(w * 0.8f, h * 0.8f, x, CARD_Y + 0.03f, r, g, b, locked);
 
         // El se3r ta7t
         float nr = 0.2f, ng = 0.15f, nb = 0.05f;
@@ -1757,6 +2353,9 @@ int main() {
         cleanup();
         return -1;
     }
+
+    // Nload el atlases bta3et el characters
+    loadSprites();
 
     // Nebda2 el clock 2abl el loop
     lastFrameTime = (float)glfwGetTime();
@@ -1950,6 +2549,7 @@ int main() {
             updateEnemyAttacks();
             updateProjectiles();
             removeDeadEntities();
+            updateAnimations();
             updateCoins();
         }
 
