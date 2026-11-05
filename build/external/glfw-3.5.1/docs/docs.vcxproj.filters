@@ -1,0 +1,32 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="17.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\hp\Desktop\Graphics\build\external\glfw-3.5.1\docs\Doxyfile" />
+    <CustomBuild Include="C:\Users\hp\Desktop\Graphics\build\CMakeFiles\d8d1c523b477022c4bbbc320798b7eaf\docs.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+    <CustomBuild Include="C:\Users\hp\Desktop\Graphics\external\glfw-3.5.1\docs\CMakeLists.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="C:\Users\hp\Desktop\Graphics\external\glfw-3.5.1\docs\main.md" />
+    <None Include="C:\Users\hp\Desktop\Graphics\external\glfw-3.5.1\docs\news.md" />
+    <None Include="C:\Users\hp\Desktop\Graphics\external\glfw-3.5.1\docs\quick.md" />
+    <None Include="C:\Users\hp\Desktop\Graphics\external\glfw-3.5.1\docs\moving.md" />
+    <None Include="C:\Users\hp\Desktop\Graphics\external\glfw-3.5.1\docs\compile.md" />
+    <None Include="C:\Users\hp\Desktop\Graphics\external\glfw-3.5.1\docs\build.md" />
+    <None Include="C:\Users\hp\Desktop\Graphics\external\glfw-3.5.1\docs\intro.md" />
+    <None Include="C:\Users\hp\Desktop\Graphics\external\glfw-3.5.1\docs\context.md" />
+    <None Include="C:\Users\hp\Desktop\Graphics\external\glfw-3.5.1\docs\monitor.md" />
+    <None Include="C:\Users\hp\Desktop\Graphics\external\glfw-3.5.1\docs\window.md" />
+    <None Include="C:\Users\hp\Desktop\Graphics\external\glfw-3.5.1\docs\input.md" />
+    <None Include="C:\Users\hp\Desktop\Graphics\external\glfw-3.5.1\docs\vulkan.md" />
+    <None Include="C:\Users\hp\Desktop\Graphics\external\glfw-3.5.1\docs\compat.md" />
+    <None Include="C:\Users\hp\Desktop\Graphics\external\glfw-3.5.1\docs\internal.md" />
+    <None Include="C:\Users\hp\Desktop\Graphics\build\external\glfw-3.5.1\docs\CMakeFiles\docs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{2294EDA1-AEA5-3B31-9508-C84AC5B2EC3C}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>
