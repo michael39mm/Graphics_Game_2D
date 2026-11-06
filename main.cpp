@@ -136,11 +136,11 @@ float BUTTON_H = 0.12f;
 
 // ===== Coins w el cards =====
 // El coins elly bnebda2 beeha (30 = 3 melee bel zabt) - 500 lel testing bas
-int START_COINS = 500;
+int START_COINS = 30;
 int coins = START_COINS;
 
 int PLAYER_COST[3] = {10, 20, 30};  // melee, ranged, defense
-int ENEMY_DROP[3]  = {10, 15, 20};  // easy, medium, hard
+int ENEMY_DROP[3]  = {20, 20, 20};  // easy, medium, hard
 
 // Awel player lazem yeb2a melee - ba3d keda kol el cards maftoo7a law el coins kfaya
 bool firstMeleePlaced = false;
@@ -1157,12 +1157,22 @@ void spawnEnemy(int type, int lane) {
     enemies.push_back(e);
 }
 
-// El card da maftoo7? (el melee daymann - el ba2y ba3d awel melee w law el coins kfaya)
+// El card da maftoo7?
+// - lazem el coins kfaya
+// - el melee (10) maftoo7 daymann
+// - fel wave el awla el melee bas, w men wave 2 el ba2y yetfete7 (law fe melee etn7at 2abl keda)
+// masalan wave 1 w ma3ak 50 coin: el ranged (20) lessa locked
 bool canBuy(int type) {
     if (coins < PLAYER_COST[type])
         return false;
 
-    return type == PLAYER_MELEE || firstMeleePlaced;
+    if (type == PLAYER_MELEE)
+        return true;
+
+    if (currentWave == 0)
+        return false;
+
+    return firstMeleePlaced;
 }
 
 // Nesht3ry player fe kol lane selected
@@ -1272,9 +1282,9 @@ void updatePlayers() {
         if (e == -1)
             p.x += PLAYER_SPEED * deltaTime;
 
-        // Wesel a5er el shar3: yo2af hena le7ad ma enemy yeegy y2tlo
-        if (p.x > LANE_RIGHT - 0.05f)
-            p.x = LANE_RIGHT - 0.05f;
+        // Wesel a5er el shar3: ye5rog men el game
+        if (p.x > LANE_RIGHT)
+            p.health = 0;
 
         p.attackTimer += deltaTime;
 
@@ -1454,8 +1464,8 @@ void updateAnimations() {
         Player& p = players[i];
 
         int want = ANIM_WALK;
-        // Wa2ef: defense, aw 5abat fe enemy, aw wesel a5er el shar3
-        if (p.type == PLAYER_DEFENSE || findTouchingEnemy(p) != -1 || p.x >= LANE_RIGHT - 0.05f)
+        // Wa2ef: defense, aw 5abat fe enemy
+        if (p.type == PLAYER_DEFENSE || findTouchingEnemy(p) != -1)
             want = ANIM_IDLE;
         if (p.duckTimer > 0.0f)
             want = ANIM_CROUCH;
