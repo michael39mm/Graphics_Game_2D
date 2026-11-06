@@ -7,13 +7,17 @@
 #include <cmath>
 #include <string>
 
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
 // Lazem el define da yeb2a fe file wa7ed bas (3ashan el stb yetkteb hena)
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
 // el wa2t elly 3ada men a5er frame (bel sec)
 float deltaTime = 0.0f;
-float lastFrameTime = 0.0f;
+float lastFrame = 0.0f;
 
 // Global variables
 GLFWwindow* Window = nullptr;
@@ -21,14 +25,18 @@ GLFWwindow* Window = nullptr;
 int width = 800;
 int height = 600;
 
-GLuint ShaderProgram = 0;
-GLuint VAO = 0;
-GLuint VBO = 0;
-GLuint EBO = 0;
+// Zay lab 3 (el 2vs code): array men VAOs w VBOs, kol wa7ed le no3 shapes
+//   [0] = el shapes el sabta (el morab3, el dayra, el kseeban) - btet7at fel GPU marra wa7da
+//   [1] = el triangle (no2ato btet8ayar kol rasma fa bnebe3atha kol marra)
+//   [2] = morab3 el sprites (feeh texture coordinates badal el lon)
+GLuint VAO[3];
+GLuint VBO[3];
+GLuint EBO;
 
-// Makan el offset w el redAmount fel shader
-GLint OffsetLocation = -1;
-GLint RedLocation = -1;
+GLuint shaderProgram = 0;
+GLint locTransform = -1;  // u_Transform: makan w 7agm el shakl
+GLint locTint = -1;       // u_Tint: lon el no2at el bayda
+GLint locTint2 = -1;      // u_Tint2: lon el no2at el sooda
 
 // Amaken el lanes (nos kol shar3 men fo2 le ta7t)
 float LANE_Y[4] = {0.41f, 0.03f, -0.35f, -0.73f};
@@ -176,54 +184,79 @@ float RANGED_ATTACK_TIME = 1.5f;
 float ENEMY_SHOOT_TIME   = 2.0f;
 
 
-// Shader el rectangles
-const char* VertexShaderCode = R"(
-#version 330 core
-layout (location = 0) in vec3 Vpos;
-layout (location = 1) in vec3 Vcolor;
-out vec3 vertexColor;
-uniform vec2 offset;
-void main() {
-    gl_Position = vec4(Vpos.xy + offset, Vpos.z, 1.0);
-    vertexColor = Vcolor;
+// Shader el shapes (zay el labs: aPos + aColor, w u_Transform beyet7arak w yekabar el shakl)
+// El lon: kol no2ta fel VBO lonha abyad (1) aw eswed (0), w el fragment shader beyestakhdemo
+// ka nesba fel mix ben u_Tint w u_Tint2 (nafs fekret mix w u_Highlight fel lab)
+// masalan morab3 el gradient: fo2 abyad -> u_Tint, ta7t eswed -> u_Tint2, w el nos ma5loot
+const char* vertexShaderSource = R"(
+#version 430 core
+
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aColor;
+
+out vec3 vColor;
+
+uniform mat4 u_Transform;
+
+void main()
+{
+    gl_Position = u_Transform * vec4(aPos, 1.0);
+    vColor = aColor;
 }
 )";
 
-const char* FragmentShaderCode = R"(
-#version 330 core
-in vec3 vertexColor;
-out vec4 colors;
-uniform float redAmount;
-void main() {
-    colors = vec4(mix(vertexColor, vec3(1.0, 0.0, 0.0), redAmount), 1.0);
+const char* fragmentShaderSource = R"(
+#version 430 core
+
+in vec3 vColor;
+out vec4 FragColor;
+
+uniform vec4 u_Tint;
+uniform vec4 u_Tint2;
+
+void main()
+{
+    FragColor = mix(u_Tint2, u_Tint, vColor.r);
 }
 )";
 
-// Shader el sprites (el soora badal el lon)
-const char* TexVertexShaderCode = R"(
-#version 330 core
-layout (location = 0) in vec2 Vpos;
-layout (location = 1) in vec2 Vuv;
-out vec2 uv;
-void main() {
-    gl_Position = vec4(Vpos, 0.0, 1.0);
-    uv = Vuv;
+// Shader el sprites (nafs el fekra bas badal el lon soora men el atlas)
+// aTexCoord men 0 le 1, w u_Frame beye5tar anhy frame men el atlas (u0, v0, u1, v1)
+const char* texVertexShaderSource = R"(
+#version 430 core
+
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec2 aTexCoord;
+
+out vec2 vTexCoord;
+
+uniform mat4 u_Transform;
+uniform vec4 u_Frame;
+
+void main()
+{
+    gl_Position = u_Transform * vec4(aPos, 1.0);
+    vTexCoord = vec2(mix(u_Frame.x, u_Frame.z, aTexCoord.x), mix(u_Frame.y, u_Frame.w, aTexCoord.y));
 }
 )";
 
-const char* TexFragmentShaderCode = R"(
-#version 330 core
-in vec2 uv;
-out vec4 colors;
-uniform sampler2D atlas;
-uniform float redAmount;   // el darb
-uniform float greyAmount;  // el card el locked
-void main() {
-    vec4 c = texture(atlas, uv);
+const char* texFragmentShaderSource = R"(
+#version 430 core
+
+in vec2 vTexCoord;
+out vec4 FragColor;
+
+uniform sampler2D u_Atlas;
+uniform float u_Red;   // el darb (0 = 3adi, 1 = a7mar)
+uniform float u_Grey;  // el card el locked (0 = 3adi, 1 = ramady)
+
+void main()
+{
+    vec4 c = texture(u_Atlas, vTexCoord);
     float grey = dot(c.rgb, vec3(0.3, 0.59, 0.11)) * 0.7;
-    vec3 rgb = mix(c.rgb, vec3(grey), greyAmount);
-    rgb = mix(rgb, vec3(1.0, 0.0, 0.0) * c.a, redAmount);
-    colors = vec4(rgb, c.a);
+    vec3 finalColor = mix(c.rgb, vec3(grey), u_Grey);
+    finalColor = mix(finalColor, vec3(1.0, 0.0, 0.0) * c.a, u_Red);
+    FragColor = vec4(finalColor, c.a);
 }
 )";
 
@@ -275,11 +308,11 @@ float SPRITE_SCALE = 0.6f;       // fel game
 float CARD_SPRITE_SCALE = 0.4f;  // gowa el cards
 float FEET_OFFSET = 0.13f;       // el rgleen ta7t nos el lane be kam
 
-GLuint TexProgram = 0;
-GLuint TexVAO = 0;
-GLuint TexVBO = 0;
-GLint TexRedLocation = -1;
-GLint TexGreyLocation = -1;
+GLuint texProgram = 0;
+GLint locTexTransform = -1;  // u_Transform bta3 el sprites
+GLint locFrame = -1;         // u_Frame: anhy frame men el atlas
+GLint locRed = -1;           // u_Red
+GLint locGrey = -1;          // u_Grey
 
 // Nload el atlas men el file (bnegarrab el path men aktar men makan)
 void loadSprite(SpriteInfo& s) {
@@ -359,28 +392,25 @@ void drawSprite(int sprite, int anim, int frame, float feetX, float feetY,
     float bottom = feetY - (s.cellH - (s.footY[anim] + 1.0f)) * pxY;
     float top    = bottom + s.cellH * pxY;
 
-    float vertices[] = {
-        left,  top,    u0, v0,
-        left,  bottom, u0, v1,
-        right, top,    u1, v0,
-        right, bottom, u1, v1
-    };
+    // Morab3 el sprite (men 0 le 1 fel VBO[2]): translate le (left, bottom) w scale le 7agm el frame
+    glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(left, bottom, 0.0f));
+    transform = glm::scale(transform, glm::vec3(right - left, top - bottom, 1.0f));
 
-    glUseProgram(TexProgram);
-    glUniform1f(TexRedLocation, red);
-    glUniform1f(TexGreyLocation, grey);
+    glUseProgram(texProgram);
+    glUniformMatrix4fv(locTexTransform, 1, GL_FALSE, glm::value_ptr(transform));
+    glUniform4f(locFrame, u0, v0, u1, v1);
+    glUniform1f(locRed, red);
+    glUniform1f(locGrey, grey);
     glBindTexture(GL_TEXTURE_2D, s.texture);
     glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
 
-    glBindVertexArray(TexVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, TexVBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+    glBindVertexArray(VAO[2]);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 
-    // Nraga3 kol 7aga lel rectangles
+    // Nraga3 kol 7aga lel shapes
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    glUseProgram(ShaderProgram);
+    glUseProgram(shaderProgram);
 }
 
 // ==========================================
@@ -556,76 +586,71 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
 // ==========================================
 
 bool initialize() {
-    if (!glfwInit()) {
-        std::cerr << "Failed to initialize GLFW\n";
+    if (!glfwInit())
         return false;
-    }
 
-    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 4);
     glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
     glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 
     Window = glfwCreateWindow(width, height, "2D GAME", nullptr, nullptr);
-
     if (!Window) {
-        std::cerr << "Window creation error\n";
+        std::cerr << "Failed to create window\n";
         glfwTerminate();
         return false;
     }
 
+    glfwSetKeyCallback(Window, keyCallback);
+    glfwSetMouseButtonCallback(Window, mouseButtonCallback);
     glfwMakeContextCurrent(Window);
 
     if (!gladLoadGL(glfwGetProcAddress)) {
-        std::cerr << "Failed to initialize GLAD\n";
-        glfwTerminate();
+        std::cerr << "Failed to init GLAD\n";
         return false;
     }
+
+    glViewport(0, 0, width, height);
+    glfwSwapInterval(1);
 
     // Blending 3ashan el 7awaf el shafafa fel sprites
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    glfwSetMouseButtonCallback(Window, mouseButtonCallback);
-    glfwSetKeyCallback(Window, keyCallback);
-
     return true;
 }
 
-// Compile one shader
-GLuint compileShader(GLenum type, const char* src) {
+// Compile shader wa7ed (nafs code el lab)
+GLuint compileShader(GLenum type, const char* source) {
     GLuint shader = glCreateShader(type);
-    glShaderSource(shader, 1, &src, nullptr);
+    glShaderSource(shader, 1, &source, nullptr);
     glCompileShader(shader);
 
-    GLint success;
+    int success;
     glGetShaderiv(shader, GL_COMPILE_STATUS, &success);
-
     if (!success) {
-        char log[512];
-        glGetShaderInfoLog(shader, 512, nullptr, log);
-        std::cerr << "Shader compile error:\n" << log << '\n';
+        char infoLog[512];
+        glGetShaderInfoLog(shader, 512, nullptr, infoLog);
+        std::cerr << "Shader compile error:\n" << infoLog << std::endl;
     }
-
     return shader;
 }
 
-// Program men vertex w fragment shader (nafs el 5atawat lel etnen)
-GLuint makeProgram(const char* vertexCode, const char* fragmentCode) {
-    GLuint vertexShader = compileShader(GL_VERTEX_SHADER, vertexCode);
-    GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentCode);
+// Shader program men vertex w fragment (nafs 5atawat el lab, bas f function 3ashan 3andena 2 programs)
+GLuint buildProgram(const char* vertexSource, const char* fragmentSource) {
+    GLuint vertexShader = compileShader(GL_VERTEX_SHADER, vertexSource);
+    GLuint fragmentShader = compileShader(GL_FRAGMENT_SHADER, fragmentSource);
 
     GLuint program = glCreateProgram();
     glAttachShader(program, vertexShader);
     glAttachShader(program, fragmentShader);
     glLinkProgram(program);
 
-    GLint success;
+    int success;
     glGetProgramiv(program, GL_LINK_STATUS, &success);
-
     if (!success) {
-        char log[512];
-        glGetProgramInfoLog(program, 512, nullptr, log);
-        std::cerr << "Shader link error:\n" << log << '\n';
+        char infoLog[512];
+        glGetProgramInfoLog(program, 512, nullptr, infoLog);
+        std::cerr << "Shader link error:\n" << infoLog << std::endl;
     }
 
     glDeleteShader(vertexShader);
@@ -634,78 +659,183 @@ GLuint makeProgram(const char* vertexCode, const char* fragmentCode) {
     return program;
 }
 
+// ==========================================
+// El kseeban (shakl kol saff - bnebneeh marra wa7da fel VBO)
+// ==========================================
+
+// Ertefa3 2emmet el kaseeb 3and x = base + mawgateen sin fo2 ba3d
+// (wa7da kbeera bel ra7a w wa7da soghayara asra3 - 3ashan el shakl yeb2a tabee3y)
+// w bottomY = el raml beyenzel le7ad fein
+struct DuneShape {
+    float base;
+    float a1, f1, p1;  // el mawga el kbeera: ertefa3, sor3a, bedaya
+    float a2, f2, p2;  // el mawga el soghayara
+    float bottomY;
+};
+
+const int DUNE_ARENA_FAR   = 0;
+const int DUNE_ARENA_NEAR  = 1;
+const int DUNE_MENU_BACK   = 2;
+const int DUNE_MENU_MID    = 3;
+const int DUNE_MENU_FRONT  = 4;
+const int DUNE_DESERT_BACK = 5;
+const int DUNE_DESERT_MID  = 6;
+const int DUNE_COUNT       = 7;
+
+DuneShape DUNES[DUNE_COUNT] = {
+    {0.71f,  0.045f, 2.7f, 0.6f, 0.020f, 6.9f, 2.1f,  0.60f},  // arena be3eed
+    {0.655f, 0.025f, 3.9f, 2.4f, 0.012f, 9.7f, 0.3f,  0.60f},  // arena 2orayyeb
+    {-0.22f, 0.07f,  2.1f, 0.4f, 0.030f, 5.3f, 1.9f, -1.0f},   // menu wara
+    {-0.47f, 0.06f,  2.9f, 2.2f, 0.025f, 7.1f, 0.8f, -1.0f},   // menu nos
+    {-0.74f, 0.05f,  3.7f, 1.1f, 0.020f, 8.9f, 2.6f, -1.0f},   // menu oddam
+    {-0.05f, 0.07f,  2.3f, 1.0f, 0.030f, 5.9f, 0.4f, -1.0f},   // sa7ra el cutscene wara
+    {-0.22f, 0.05f,  3.1f, 2.6f, 0.020f, 7.7f, 1.3f, -1.0f},   // sa7ra el cutscene oddam
+};
+
+float duneTop(DuneShape d, float x) {
+    return d.base + d.a1 * sin(d.f1 * x + d.p1) + d.a2 * sin(d.f2 * x + d.p2);
+}
+
+// ==========================================
+// El VBOs (zay el labs)
+// ==========================================
+
+// Amaken el shapes gowa VBO[0] (zay circleVertexStart fel lab)
+const int SQUARE_VERTEX_COUNT = 4;   // vertices 0 -> 3 = el morab3
+int circleVertexStart = 0;
+int circleVertexCount = 0;
+const int DUNE_SEGMENTS = 60;
+int duneVertexStart[DUNE_COUNT];     // bedayet jesm kol saff kseeban
+int crestVertexStart[DUNE_COUNT];    // bedayet 5att el nour bta3o
+int duneVertexCount = 0;
+
+// Nebny kol el shapes marra wa7da w ne7otha fel GPU (GL_STATIC_DRAW)
 void pipeline() {
-    ShaderProgram = makeProgram(VertexShaderCode, FragmentShaderCode);
-    OffsetLocation = glGetUniformLocation(ShaderProgram, "offset");
-    RedLocation = glGetUniformLocation(ShaderProgram, "redAmount");
+    shaderProgram = buildProgram(vertexShaderSource, fragmentShaderSource);
+    texProgram = buildProgram(texVertexShaderSource, texFragmentShaderSource);
 
-    TexProgram = makeProgram(TexVertexShaderCode, TexFragmentShaderCode);
-    TexRedLocation = glGetUniformLocation(TexProgram, "redAmount");
-    TexGreyLocation = glGetUniformLocation(TexProgram, "greyAmount");
+    // ===== VBO[0]: el shapes el sabta =====
+    // El morab3: men -0.5 le 0.5 (nos el morab3 3and 0,0) - fo2 abyad w ta7t eswed (lel gradient)
+    std::vector<float> vertices = {
+        //Positions              //Colors
+        -0.5f,  0.5f, 0.0f,      1.0f, 1.0f, 1.0f,  //0 fo2 shmal
+        -0.5f, -0.5f, 0.0f,      0.0f, 0.0f, 0.0f,  //1 ta7t shmal
+         0.5f,  0.5f, 0.0f,      1.0f, 1.0f, 1.0f,  //2 fo2 yemeen
+         0.5f, -0.5f, 0.0f,      0.0f, 0.0f, 0.0f   //3 ta7t yemeen
+    };
 
-    // Rectangle indices (2 triangles)
-    unsigned int indices[] = {
+    // El morab3 = 2 triangles men el 4 no2at (el EBO zay el lab)
+    GLuint indices[] = {
         0, 1, 2,
         2, 1, 3
     };
 
-    // ===== VAO el rectangles: 4 vertices, kol wa7ed (x, y, z, r, g, b) =====
-    glGenVertexArrays(1, &VAO);
-    glGenBuffers(1, &VBO);
+    // El dayra (zay el lab): nos abyad + 32 no2ta 3al 7erf sooda (GL_TRIANGLE_FAN)
+    circleVertexStart = SQUARE_VERTEX_COUNT;  // = 4
+    const int segments = 32;
+    vertices.insert(vertices.end(), { 0.0f, 0.0f, 0.0f,  1.0f, 1.0f, 1.0f });
+    for (int i = 0; i <= segments; ++i) {
+        float angle = 2.0f * 3.1416f * (float)i / (float)segments;
+        vertices.insert(vertices.end(), {
+            cosf(angle), sinf(angle), 0.0f,
+            0.0f, 0.0f, 0.0f
+            });
+    }
+    circleVertexCount = segments + 2;
+
+    // El kseeban (GL_TRIANGLE_STRIP): kol 3amood no2teen - fo2 3and el 2emma (abyad) w ta7t
+    // 3and bottomY (eswed), w el GPU byersem triangle ben kol 3 no2at wara ba3d
+    // w 5att el nour: strip rofayya3 3al 2emma (kolo abyad)
+    duneVertexCount = (DUNE_SEGMENTS + 1) * 2;
+    for (int d = 0; d < DUNE_COUNT; d++) {
+        duneVertexStart[d] = (int)vertices.size() / 6;
+        for (int i = 0; i <= DUNE_SEGMENTS; i++) {
+            float x = -1.0f + 2.0f * i / DUNE_SEGMENTS;
+            float top = duneTop(DUNES[d], x);
+            vertices.insert(vertices.end(), {
+                x, top,              0.0f,  1.0f, 1.0f, 1.0f,
+                x, DUNES[d].bottomY, 0.0f,  0.0f, 0.0f, 0.0f
+                });
+        }
+
+        crestVertexStart[d] = (int)vertices.size() / 6;
+        for (int i = 0; i <= DUNE_SEGMENTS; i++) {
+            float x = -1.0f + 2.0f * i / DUNE_SEGMENTS;
+            float top = duneTop(DUNES[d], x);
+            vertices.insert(vertices.end(), {
+                x, top,          0.0f,  1.0f, 1.0f, 1.0f,
+                x, top - 0.008f, 0.0f,  1.0f, 1.0f, 1.0f
+                });
+        }
+    }
+
+    // ===== VBO[2]: morab3 el sprites men 0 le 1 (position + texture coordinates) =====
+    float spriteVertices[] = {
+        //Positions          //TexCoords
+        0.0f, 1.0f, 0.0f,    0.0f, 0.0f,  //0 fo2 shmal
+        0.0f, 0.0f, 0.0f,    0.0f, 1.0f,  //1 ta7t shmal
+        1.0f, 1.0f, 0.0f,    1.0f, 0.0f,  //2 fo2 yemeen
+        1.0f, 0.0f, 0.0f,    1.0f, 1.0f   //3 ta7t yemeen
+    };
+
+    glGenVertexArrays(3, VAO);
+    glGenBuffers(3, VBO);
     glGenBuffers(1, &EBO);
 
-    glBindVertexArray(VAO);
-
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    // Makan le 256 vertex (el kseeban 122 vertex, el ellipse 34)
-    glBufferData(GL_ARRAY_BUFFER, 256 * 6 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
-
+    // VAO[0]: el shapes el sabta + el EBO bta3 el morab3
+    glBindVertexArray(VAO[0]);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO[0]);
+    glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(float), vertices.data(), GL_STATIC_DRAW);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
-
-    // Position: x, y, z
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-
-    // Color: r, g, b
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
-    // ===== VAO el sprites: 4 vertices, kol wa7ed (x, y, u, v) =====
-    glGenVertexArrays(1, &TexVAO);
-    glGenBuffers(1, &TexVBO);
-
-    glBindVertexArray(TexVAO);
-
-    glBindBuffer(GL_ARRAY_BUFFER, TexVBO);
-    glBufferData(GL_ARRAY_BUFFER, 4 * 4 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
-
-    // Nafs el EBO (nafs el 6 indices)
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
-
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)0);
+    // VAO[1]: el triangle (makan le 3 no2at, bnemla2hom kol rasma b glBufferSubData)
+    glBindVertexArray(VAO[1]);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO[1]);
+    glBufferData(GL_ARRAY_BUFFER, 3 * 6 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)0);
     glEnableVertexAttribArray(0);
-
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float), (void*)(2 * sizeof(float)));
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 6 * sizeof(float), (void*)(3 * sizeof(float)));
     glEnableVertexAttribArray(1);
 
+    // VAO[2]: el sprites (nafs el EBO: nafs tarteeb el 4 no2at)
+    glBindVertexArray(VAO[2]);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO[2]);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(spriteVertices), spriteVertices, GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+    glEnableVertexAttribArray(1);
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
+
+    locTransform = glGetUniformLocation(shaderProgram, "u_Transform");
+    locTint = glGetUniformLocation(shaderProgram, "u_Tint");
+    locTint2 = glGetUniformLocation(shaderProgram, "u_Tint2");
+
+    locTexTransform = glGetUniformLocation(texProgram, "u_Transform");
+    locFrame = glGetUniformLocation(texProgram, "u_Frame");
+    locRed = glGetUniformLocation(texProgram, "u_Red");
+    locGrey = glGetUniformLocation(texProgram, "u_Grey");
 }
 
-// Release resources
+// Cleanup (zay el lab)
 void cleanup() {
     for (int i = 0; i < SPRITE_COUNT; i++)
         glDeleteTextures(1, &sprites[i].texture);
 
+    glDeleteVertexArrays(3, VAO);
+    glDeleteBuffers(3, VBO);
     glDeleteBuffers(1, &EBO);
-    glDeleteBuffers(1, &VBO);
-    glDeleteBuffers(1, &TexVBO);
-    glDeleteVertexArrays(1, &VAO);
-    glDeleteVertexArrays(1, &TexVAO);
-    glDeleteProgram(ShaderProgram);
-    glDeleteProgram(TexProgram);
+    glDeleteProgram(shaderProgram);
+    glDeleteProgram(texProgram);
 
-    glfwDestroyWindow(Window);
     glfwTerminate();
 }
 
@@ -713,27 +843,27 @@ void cleanup() {
 // El shapes (rectangle, triangle, w ellipse)
 // ==========================================
 
+// Nebe3at el lonen lel shader: el no2at el bayda b (r1, g1, b1) w el sooda b (r2, g2, b2)
+void setColors(float r1, float g1, float b1, float r2, float g2, float b2) {
+    glUniform4f(locTint, r1, g1, b1, 1.0f);
+    glUniform4f(locTint2, r2, g2, b2, 1.0f);
+}
+
 // Rectangle men el nos bta3o, el lon fo2 (rTop..) w el lon ta7t (rBottom..)
 // el GPU byemla elly benhom tadreeg na3em (gradient)
-// masalan sama: a7mar gham2 fo2 w bortoo2any ta7t
+// El morab3 el wa7eed fel VBO (1 x 1 w nosso 3and 0,0) - el transform (zay el lab)
+// bey7arako le (posX, posY) w yekabaro le (rectWidth, rectHeight)
+// masalan rectangle 0.4 x 0.2 3and (0.5, 0) -> translate(0.5, 0) w scale(0.4, 0.2)
 void drawGradientRectangle(float rectWidth, float rectHeight, float posX, float posY,
                            float rTop, float gTop, float bTop,
                            float rBottom, float gBottom, float bBottom) {
-    float left   = posX - rectWidth / 2.0f;
-    float right  = posX + rectWidth / 2.0f;
-    float top    = posY + rectHeight / 2.0f;
-    float bottom = posY - rectHeight / 2.0f;
+    glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(posX, posY, 0.0f));
+    transform = glm::scale(transform, glm::vec3(rectWidth, rectHeight, 1.0f));
 
-    float vertices[] = {
-        left,  top,    0.0f, rTop,    gTop,    bTop,
-        left,  bottom, 0.0f, rBottom, gBottom, bBottom,
-        right, top,    0.0f, rTop,    gTop,    bTop,
-        right, bottom, 0.0f, rBottom, gBottom, bBottom
-    };
+    glUniformMatrix4fv(locTransform, 1, GL_FALSE, glm::value_ptr(transform));
+    setColors(rTop, gTop, bTop, rBottom, gBottom, bBottom);
 
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+    glBindVertexArray(VAO[0]);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 }
@@ -744,57 +874,43 @@ void drawRectangle(float rectWidth, float rectHeight, float posX, float posY,
     drawGradientRectangle(rectWidth, rectHeight, posX, posY, r, g, b, r, g, b);
 }
 
-// Triangle men 3 no2at
+// Triangle men 3 no2at: el no2at btet8ayar kol marra fa bnektebha fel VBO[1] (glBufferSubData)
+// w el transform = mafeesh 7araka (glm::mat4(1.0f))
 void drawTriangle(float x1, float y1, float x2, float y2, float x3, float y3,
                   float r, float g, float b) {
     float vertices[] = {
-        x1, y1, 0.0f, r, g, b,
-        x2, y2, 0.0f, r, g, b,
-        x3, y3, 0.0f, r, g, b
+        //Positions      //Colors
+        x1, y1, 0.0f,    1.0f, 1.0f, 1.0f,
+        x2, y2, 0.0f,    1.0f, 1.0f, 1.0f,
+        x3, y3, 0.0f,    1.0f, 1.0f, 1.0f
     };
 
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glm::mat4 transform = glm::mat4(1.0f);
+    glUniformMatrix4fv(locTransform, 1, GL_FALSE, glm::value_ptr(transform));
+    setColors(r, g, b, r, g, b);
+
+    glBindVertexArray(VAO[1]);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO[1]);
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
     glDrawArrays(GL_TRIANGLES, 0, 3);
     glBindVertexArray(0);
 }
 
-// EL SHAKL EL "COMPLEX" EL WA7EED (lel 2amarein bas): ellipse (dayra)
-// 32 triangle kolohom bybda2o men el nos zay 7etat el pizza (GL_TRIANGLE_FAN)
-// el no2ta i 3ala el 7erf: zawya = i * 360 / 32, w x = cos(zawya), y = sin(zawya)
+// EL SHAKL EL "COMPLEX" EL WA7EED (lel 2amarein bas): ellipse
+// El dayra elly fel VBO (zay el lab: GL_TRIANGLE_FAN, nos + 32 no2ta 3al 7erf, nos 1)
+// el transform bey7arakha le (x, y) w yekabarha le (radiusX, radiusY)
 // el nos leh lon w el 7erf leh lon (3ashan teban kora b nour)
 void drawEllipse(float x, float y, float radiusX, float radiusY,
                  float rCenter, float gCenter, float bCenter,
                  float rEdge, float gEdge, float bEdge) {
-    const int SLICES = 32;
-    float vertices[(SLICES + 2) * 6];
+    glm::mat4 transform = glm::translate(glm::mat4(1.0f), glm::vec3(x, y, 0.0f));
+    transform = glm::scale(transform, glm::vec3(radiusX, radiusY, 1.0f));
 
-    // El nos
-    vertices[0] = x;
-    vertices[1] = y;
-    vertices[2] = 0.0f;
-    vertices[3] = rCenter;
-    vertices[4] = gCenter;
-    vertices[5] = bCenter;
+    glUniformMatrix4fv(locTransform, 1, GL_FALSE, glm::value_ptr(transform));
+    setColors(rCenter, gCenter, bCenter, rEdge, gEdge, bEdge);
 
-    // El no2at 3ala el 7erf (el a5eera = el awla 3ashan ne2fel el dayra)
-    for (int i = 0; i <= SLICES; i++) {
-        float angle = i * 6.2832f / SLICES;
-        float* v = vertices + (i + 1) * 6;
-
-        v[0] = x + cos(angle) * radiusX;
-        v[1] = y + sin(angle) * radiusY;
-        v[2] = 0.0f;
-        v[3] = rEdge;
-        v[4] = gEdge;
-        v[5] = bEdge;
-    }
-
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
-    glDrawArrays(GL_TRIANGLE_FAN, 0, SLICES + 2);
+    glBindVertexArray(VAO[0]);
+    glDrawArrays(GL_TRIANGLE_FAN, circleVertexStart, circleVertexCount);
     glBindVertexArray(0);
 }
 
@@ -1693,58 +1809,23 @@ void drawStars(float t, float minY) {
     }
 }
 
-// Shakl saff kseeban: ertefa3 el 2emma 3and x = base + mawgateen sin fo2 ba3d
-// (wa7da kbeera bel ra7a w wa7da soghayara asra3 - 3ashan el shakl yeb2a tabee3y)
-struct DuneShape {
-    float base;
-    float a1, f1, p1;  // el mawga el kbeera: ertefa3, sor3a, bedaya
-    float a2, f2, p2;  // el mawga el soghayara
-};
-
-float duneTop(DuneShape d, float x) {
-    return d.base + d.a1 * sin(d.f1 * x + d.p1) + d.a2 * sin(d.f2 * x + d.p2);
-}
-
-// Saff kseeban na3em: 60 3amood rofa3 gamb ba3d, bas badal ma kol wa7ed rectangle
-// (60 draw call w shakl salalem) bnewassal el 2emam b triangles (triangle strip):
-// kol 2 no2at (fo2 3and el 2emma, w ta7t 3and bottomY) - el GPU byersem triangle ben kol 3
-// fa el 7awaf betetla3 mayla na3ma, w kolo draw call wa7da.
-// El lon gradient men fo2 le ta7t, w 3al 2emma 5att nour rofayya3 (strip tany)
-void drawDuneLayer(DuneShape d, float bottomY,
+// Saff kseeban na3em: el shakl aslan fel VBO[0] (etbana marra wa7da fel pipeline)
+// - el jesm: GL_TRIANGLE_STRIP, el 2emma b (rTop..) w ta7t b (rBottom..)
+// - 5att el nour 3al 2emma: strip tany kolo b (rLight..)
+void drawDuneLayer(int layer,
                    float rTop, float gTop, float bTop,
                    float rBottom, float gBottom, float bBottom,
                    float rLight, float gLight, float bLight) {
-    const int SEGMENTS = 60;
-    float body[(SEGMENTS + 1) * 12];
-    float crest[(SEGMENTS + 1) * 12];
+    glm::mat4 transform = glm::mat4(1.0f);
+    glUniformMatrix4fv(locTransform, 1, GL_FALSE, glm::value_ptr(transform));
 
-    for (int i = 0; i <= SEGMENTS; i++) {
-        float x = -1.0f + 2.0f * i / SEGMENTS;
-        float top = duneTop(d, x);
+    glBindVertexArray(VAO[0]);
 
-        float bodyPoints[12] = {
-            x, top,     0.0f, rTop,    gTop,    bTop,
-            x, bottomY, 0.0f, rBottom, gBottom, bBottom
-        };
-        float crestPoints[12] = {
-            x, top,          0.0f, rLight, gLight, bLight,
-            x, top - 0.008f, 0.0f, rLight, gLight, bLight
-        };
+    setColors(rTop, gTop, bTop, rBottom, gBottom, bBottom);
+    glDrawArrays(GL_TRIANGLE_STRIP, duneVertexStart[layer], duneVertexCount);
 
-        for (int k = 0; k < 12; k++) {
-            body[i * 12 + k] = bodyPoints[k];
-            crest[i * 12 + k] = crestPoints[k];
-        }
-    }
-
-    glBindVertexArray(VAO);
-    glBindBuffer(GL_ARRAY_BUFFER, VBO);
-
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(body), body);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, (SEGMENTS + 1) * 2);
-
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(crest), crest);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, (SEGMENTS + 1) * 2);
+    setColors(rLight, gLight, bLight, rLight, gLight, bLight);
+    glDrawArrays(GL_TRIANGLE_STRIP, crestVertexStart[layer], duneVertexCount);
 
     glBindVertexArray(0);
 }
@@ -1897,17 +1978,14 @@ void drawArena(float t) {
     drawMoon(-0.17f, 0.88f, 0.035f, 0.50f, 0.22f, 0.12f);
 
     // ===== El ba3eed: kseeban be3eeda, sa5r, el madeena, w kseeban 2orayyeba =====
-    DuneShape farDunes  = {0.71f,  0.045f, 2.7f, 0.6f, 0.020f, 6.9f, 2.1f};
-    DuneShape nearDunes = {0.655f, 0.025f, 3.9f, 2.4f, 0.012f, 9.7f, 0.3f};
-
-    drawDuneLayer(farDunes, 0.60f,
+    drawDuneLayer(DUNE_ARENA_FAR,
                   0.93f, 0.70f, 0.45f,  0.82f, 0.56f, 0.34f,  0.99f, 0.84f, 0.60f);
 
     drawMesa(-0.55f, 0.64f, 0.10f, 0.09f);
     drawMesa(0.97f, 0.64f, 0.10f, 0.07f);
     drawDesertCity(-0.27f, 0.63f);
 
-    drawDuneLayer(nearDunes, 0.60f,
+    drawDuneLayer(DUNE_ARENA_NEAR,
                   0.86f, 0.60f, 0.36f,  0.74f, 0.50f, 0.30f,  0.95f, 0.74f, 0.50f);
 
     drawDust(t, 0.62f, 0.74f, 16);
@@ -1956,15 +2034,11 @@ void drawMainMenu(float t) {
     drawMoon(-0.68f, 0.82f, 0.05f, 0.25f, 0.10f, 0.07f);
 
     // El kseeban el be3eeda, w 3aleha sa5r kbeer 3al yemeen w soghayar 3al shmal
-    DuneShape backDunes  = {-0.22f, 0.07f, 2.1f, 0.4f, 0.030f, 5.3f, 1.9f};
-    DuneShape midDunes   = {-0.47f, 0.06f, 2.9f, 2.2f, 0.025f, 7.1f, 0.8f};
-    DuneShape frontDunes = {-0.74f, 0.05f, 3.7f, 1.1f, 0.020f, 8.9f, 2.6f};
-
     drawMesa(0.72f, -0.26f, 0.20f, 0.26f);
     drawMesa(0.52f, -0.24f, 0.10f, 0.14f);
     drawMesa(-0.40f, -0.22f, 0.08f, 0.08f);
 
-    drawDuneLayer(backDunes, -1.0f,
+    drawDuneLayer(DUNE_MENU_BACK,
                   0.86f, 0.58f, 0.34f,  0.70f, 0.45f, 0.26f,  0.97f, 0.78f, 0.52f);
 
     // Mo3askar Atreides soghayar 3al kseeban el wustaneyya (talat wind traps)
@@ -1972,16 +2046,16 @@ void drawMainMenu(float t) {
     drawWindTrap(-0.62f, -0.44f, 2.0f);
     drawWindTrap(-0.52f, -0.46f, 1.4f);
 
-    drawDuneLayer(midDunes, -1.0f,
+    drawDuneLayer(DUNE_MENU_MID,
                   0.76f, 0.48f, 0.27f,  0.58f, 0.35f, 0.20f,  0.88f, 0.64f, 0.40f);
-    drawDuneLayer(frontDunes, -1.0f,
+    drawDuneLayer(DUNE_MENU_FRONT,
                   0.62f, 0.38f, 0.21f,  0.42f, 0.25f, 0.14f,  0.75f, 0.52f, 0.32f);
 
     // Spice benawwar fel raml el 2orayyeb
     for (int i = 0; i < 14; i++) {
         float glow = spiceGlow(t, i);
         float x = -0.92f + i * 0.14f;
-        float y = duneTop(frontDunes, x) - 0.06f - (i % 3) * 0.06f;
+        float y = duneTop(DUNES[DUNE_MENU_FRONT], x) - 0.06f - (i % 3) * 0.06f;
 
         drawRectangle(0.014f, 0.014f, x, y, 0.95f * glow, 0.50f * glow, 0.12f * glow);
         drawRectangle(0.006f, 0.006f, x, y, glow, 0.85f * glow, 0.50f * glow);
@@ -2174,14 +2248,11 @@ void drawDesertScene(float t) {
     drawMoon(0.55f, 0.72f, 0.12f, 0.30f, 0.12f, 0.08f);
     drawMoon(-0.60f, 0.82f, 0.045f, 0.25f, 0.10f, 0.07f);
 
-    DuneShape backDunes = {-0.05f, 0.07f, 2.3f, 1.0f, 0.03f, 5.9f, 0.4f};
-    DuneShape midDunes  = {-0.22f, 0.05f, 3.1f, 2.6f, 0.02f, 7.7f, 1.3f};
-
     drawMesa(-0.30f, -0.08f, 0.18f, 0.20f);
     drawMesa(0.80f, -0.10f, 0.12f, 0.13f);
 
-    drawDuneLayer(backDunes, -1.0f, 0.86f, 0.58f, 0.34f, 0.70f, 0.45f, 0.26f, 0.97f, 0.78f, 0.52f);
-    drawDuneLayer(midDunes, -1.0f, 0.78f, 0.50f, 0.29f, 0.62f, 0.38f, 0.21f, 0.90f, 0.67f, 0.42f);
+    drawDuneLayer(DUNE_DESERT_BACK, 0.86f, 0.58f, 0.34f, 0.70f, 0.45f, 0.26f, 0.97f, 0.78f, 0.52f);
+    drawDuneLayer(DUNE_DESERT_MID, 0.78f, 0.50f, 0.29f, 0.62f, 0.38f, 0.21f, 0.90f, 0.67f, 0.42f);
 
     // El ard el mestaweya (fate7a fo2 w agham2 ta7t) w 5att nour 3and 7arfaha
     drawGradientRectangle(2.0f, 0.70f, 0.0f, -0.67f, 0.82f, 0.58f, 0.35f, 0.55f, 0.35f, 0.19f);
@@ -2321,10 +2392,10 @@ void drawCutscene(float t) {
 
 // Bn7seb Time kol frame
 void updateDeltaTime() {
-    float currentTime = (float)glfwGetTime();
+    float currentFrame = (float)glfwGetTime();
 
-    deltaTime = currentTime - lastFrameTime;
-    lastFrameTime = currentTime;
+    deltaTime = currentFrame - lastFrame;
+    lastFrame = currentFrame;
 
     // Law el frame et2a5ar awy bn7ot limit 3ashan el 7agat matnotsh
     if (deltaTime > 0.05f)
@@ -2340,7 +2411,7 @@ int main() {
     for (int i = 0; i < SPRITE_COUNT; i++)
         loadSprite(sprites[i]);
 
-    lastFrameTime = (float)glfwGetTime();
+    lastFrame = (float)glfwGetTime();
 
     while (!glfwWindowShouldClose(Window)) {
         updateDeltaTime();
@@ -2352,9 +2423,7 @@ int main() {
         glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT);
 
-        glUseProgram(ShaderProgram);
-        glUniform2f(OffsetLocation, 0.0f, 0.0f);
-        glUniform1f(RedLocation, 0.0f);
+        glUseProgram(shaderProgram);
 
         // ===== Main menu =====
         if (gameState == STATE_MENU) {
