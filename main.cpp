@@ -139,7 +139,7 @@ float PAUSE_BUTTON_Y[4] = {0.02f, -0.15f, -0.32f, -0.49f};
 float SETTINGS_BUTTON_Y[2] = {-0.17f, -0.34f};  // mute, back
 
 // ===== El settings (el sot) =====
-int musicVolume = 10;   // men 0 (mafeesh) le 10 (a3la sot)
+int musicVolume = 4;   // men 0 (mafeesh) le 10 (a3la sot)
 bool muted = false;
 int settingsReturnState = STATE_MENU;  // fata7na el settings men el menu wala el pause (nerga3 leh)
 
@@ -931,7 +931,7 @@ void drawRectangle(float rectWidth, float rectHeight, float posX, float posY,
 }
 
 // Triangle men 3 no2at: el no2at btet8ayar kol marra fa bnektebha fel VBO[1] (glBufferSubData)
-// w el transform = mafeesh 7araka (glm::mat4(1.0f))
+// w el transform = identity (el no2at aslan fe makanha)
 void drawTriangle(float x1, float y1, float x2, float y2, float x3, float y3,
                   float r, float g, float b) {
     float vertices[] = {
@@ -967,6 +967,20 @@ void drawEllipse(float x, float y, float radiusX, float radiusY,
 
     glBindVertexArray(VAO[0]);
     glDrawArrays(GL_TRIANGLE_FAN, circleVertexStart, circleVertexCount);
+    glBindVertexArray(0);
+}
+
+// Rectangle shafaf mghatty el shasha kolaha (lel fade lel eswed w el flash el abyad)
+// alpha: 0 = mesh bayen, 1 = mghatty kolo (el blending beyekhalli elly ta7to bayen 7asab el alpha)
+// masalan alpha 0.3 abyad = el shasha btenawar shwaya
+void drawOverlay(float r, float g, float b, float alpha) {
+    glm::mat4 transform = glm::scale(glm::mat4(1.0f), glm::vec3(2.0f, 2.0f, 1.0f));
+    glUniformMatrix4fv(locTransform, 1, GL_FALSE, glm::value_ptr(transform));
+    glUniform4f(locTint, r, g, b, alpha);
+    glUniform4f(locTint2, r, g, b, alpha);
+
+    glBindVertexArray(VAO[0]);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
 }
 
@@ -2422,7 +2436,7 @@ void drawDesertScene(float t) {
         drawRectangle(0.012f, 0.012f, x + 0.09f, y - 0.02f, 0.95f * glow, 0.50f * glow, 0.12f * glow);
     }
 
-    drawDust(t, -0.5f, 0.1f, 24);
+    drawDust(t, -0.5f, 0.3f, 45);
 }
 
 // Gomla men el cutscene: narration (fel nos) aw kalam character (b sorto w esmo)
@@ -2486,6 +2500,38 @@ void drawCutsceneLine(CutsceneLine line) {
     drawTextLeft(text2.substr(0, count2), -0.59f, -0.80f, 0.01f, 1.0f, 0.97f, 0.90f);
 }
 
+// El ma3raka el awla (melee): 6 -> 8.6 sanya, kol sanya darba
+float FIGHT_START = 6.0f;
+float FIGHT_END = 8.6f;
+
+// Shrar el seyoof: 8 morab3at betetla3 men no2tet el darba fe 8 ettegahat w betesghar
+float SPARK_DIRECTIONS[8][2] = {
+    {1.0f, 0.0f}, {0.7f, 0.7f}, {0.0f, 1.0f}, {-0.7f, 0.7f},
+    {-1.0f, 0.0f}, {-0.7f, -0.7f}, {0.0f, -1.0f}, {0.7f, -0.7f}
+};
+
+void drawSparks(float x, float y, float start, float end) {
+    float t = cutsceneTime;
+    if (t < start || t >= end)
+        return;
+
+    float beat = (t - start) - (int)(t - start);
+    if (beat < 0.25f || beat > 0.55f)
+        return;
+
+    // progress men 0 (lessa darab) le 1 (el shrar ba3od w et2afal)
+    float progress = (beat - 0.25f) / 0.3f;
+    float size = 0.018f * (1.0f - progress);
+
+    for (int i = 0; i < 8; i++) {
+        float sx = x + SPARK_DIRECTIONS[i][0] * progress * 0.09f;
+        float sy = y + SPARK_DIRECTIONS[i][1] * progress * 0.09f;
+        drawRectangle(size, size, sx, sy, 1.0f, 0.85f, 0.40f);
+    }
+
+    drawRectangle(0.03f * (1.0f - progress), 0.03f * (1.0f - progress), x, y, 1.0f, 1.0f, 0.85f);
+}
+
 void drawCutscene(float t) {
     // El mashhad el delwa2ty: 0 = el sa7ra, 1 = el lanes
     int scene = 0;
@@ -2519,6 +2565,13 @@ void drawCutscene(float t) {
             drawCutsceneShot(CUTSCENE_ACTORS[i]);
     }
 
+    // Shrar ben el Atreides w el Officer (fel nos benhom, 3and ertefa3 el seyoof)
+    if (scene == 0)
+        drawSparks((actorX(CUTSCENE_ACTORS[0]) + actorX(CUTSCENE_ACTORS[2])) / 2.0f, -0.32f, FIGHT_START, FIGHT_END);
+    else
+        drawSparks((actorX(CUTSCENE_ACTORS[4]) + actorX(CUTSCENE_ACTORS[9])) / 2.0f, 0.08f,
+                   CUTSCENE_ACTORS[4].attackStart, CUTSCENE_ACTORS[4].attackEnd);
+
     // Shera2et cinema sooda fo2 w ta7t
     drawRectangle(2.0f, 0.10f, 0.0f, 0.95f, 0.0f, 0.0f, 0.0f);
     drawRectangle(2.0f, 0.10f, 0.0f, -0.95f, 0.0f, 0.0f, 0.0f);
@@ -2528,12 +2581,21 @@ void drawCutscene(float t) {
             drawCutsceneLine(CUTSCENE_LINES[i]);
     }
 
-    // El curtain: rectangle eswed beyemsa7 men el shmal lel yemeen (8.6 -> 9.4 sanya)
-    // fel nos bel zabt (9.0) bey3'atty el shasha kolaha w ta7to el mashhad beyetghayar
-    // masalan 8.8 sanya -> progress 0.25 -> el nos 3and -2.2 + 0.25 * 4.4 = -1.1
-    float progress = (cutsceneTime - (SCENE_CHANGE_TIME - 0.4f)) / 0.8f;
-    if (progress > 0.0f && progress < 1.0f)
-        drawRectangle(2.2f, 2.0f, -2.2f + progress * 4.4f, 0.0f, 0.0f, 0.0f, 0.0f);
+    // El fades lel eswed (alpha 1 = eswed kolo):
+    //   0 -> 1 sanya:     men eswed lel sa7ra (fade in)
+    //   8.3 -> 9 sanya:   el sa7ra btetfeh lel eswed
+    //   9 -> 9.7 sanya:   men eswed lel lanes
+    // masalan 8.65 sanya -> (8.65 - 8.3) / 0.7 = 0.5 -> nos eswed
+    float fade = 0.0f;
+    if (cutsceneTime < 1.0f)
+        fade = 1.0f - cutsceneTime;
+    if (cutsceneTime >= SCENE_CHANGE_TIME - 0.7f && cutsceneTime < SCENE_CHANGE_TIME)
+        fade = (cutsceneTime - (SCENE_CHANGE_TIME - 0.7f)) / 0.7f;
+    if (cutsceneTime >= SCENE_CHANGE_TIME && cutsceneTime < SCENE_CHANGE_TIME + 0.7f)
+        fade = 1.0f - (cutsceneTime - SCENE_CHANGE_TIME) / 0.7f;
+
+    if (fade > 0.0f)
+        drawOverlay(0.0f, 0.0f, 0.0f, fade);
 
     drawText("SPACE TO SKIP", 0.74f, 0.95f, 0.005f, 0.75f, 0.72f, 0.68f);
 }
@@ -2563,6 +2625,8 @@ bool musicLoaded[MUSIC_COUNT] = {false, false, false, false};
 bool audioReady = false;
 int currentMusic = -1;  // elly shaghala delwa2ty (-1 = mafeesh)
 
+void applyVolume();
+
 // Nefta7 el sound card w nload el 4 files (nafs el prefixes bta3et el sprites)
 // law mafeesh sound card aw file mesh mawgood el game yeshtaghal 3adi bas men gher sot
 void loadSounds() {
@@ -2589,6 +2653,9 @@ void loadSounds() {
 
         ma_sound_set_looping(&music[i], MUSIC_LOOP[i]);
     }
+
+    // Nedy el sot el awel (masalan 6 -> 60%) men awel el game, mesh bas lama nedoos - aw +
+    applyVolume();
 }
 
 // Kol frame: anhy music el mafrood teshtaghal 7asab 7alet el game
