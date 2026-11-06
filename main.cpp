@@ -657,7 +657,8 @@ void pipeline() {
     glBindVertexArray(VAO);
 
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    glBufferData(GL_ARRAY_BUFFER, 4 * 6 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
+    // Makan le 256 vertex (el kseeban 122 vertex, el ellipse 34)
+    glBufferData(GL_ARRAY_BUFFER, 256 * 6 * sizeof(float), nullptr, GL_DYNAMIC_DRAW);
 
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
@@ -709,22 +710,25 @@ void cleanup() {
 }
 
 // ==========================================
-// El shapes (rectangle w triangle bas)
+// El shapes (rectangle, triangle, w ellipse)
 // ==========================================
 
-// Rectangle men el nos bta3o
-void drawRectangle(float rectWidth, float rectHeight, float posX, float posY,
-                   float r, float g, float b) {
+// Rectangle men el nos bta3o, el lon fo2 (rTop..) w el lon ta7t (rBottom..)
+// el GPU byemla elly benhom tadreeg na3em (gradient)
+// masalan sama: a7mar gham2 fo2 w bortoo2any ta7t
+void drawGradientRectangle(float rectWidth, float rectHeight, float posX, float posY,
+                           float rTop, float gTop, float bTop,
+                           float rBottom, float gBottom, float bBottom) {
     float left   = posX - rectWidth / 2.0f;
     float right  = posX + rectWidth / 2.0f;
     float top    = posY + rectHeight / 2.0f;
     float bottom = posY - rectHeight / 2.0f;
 
     float vertices[] = {
-        left,  top,    0.0f, r, g, b,
-        left,  bottom, 0.0f, r, g, b,
-        right, top,    0.0f, r, g, b,
-        right, bottom, 0.0f, r, g, b
+        left,  top,    0.0f, rTop,    gTop,    bTop,
+        left,  bottom, 0.0f, rBottom, gBottom, bBottom,
+        right, top,    0.0f, rTop,    gTop,    bTop,
+        right, bottom, 0.0f, rBottom, gBottom, bBottom
     };
 
     glBindVertexArray(VAO);
@@ -732,6 +736,12 @@ void drawRectangle(float rectWidth, float rectHeight, float posX, float posY,
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
     glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
+}
+
+// Rectangle 3adi = gradient nafs el lon fo2 w ta7t
+void drawRectangle(float rectWidth, float rectHeight, float posX, float posY,
+                   float r, float g, float b) {
+    drawGradientRectangle(rectWidth, rectHeight, posX, posY, r, g, b, r, g, b);
 }
 
 // Triangle men 3 no2at
@@ -747,6 +757,44 @@ void drawTriangle(float x1, float y1, float x2, float y2, float x3, float y3,
     glBindBuffer(GL_ARRAY_BUFFER, VBO);
     glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
     glDrawArrays(GL_TRIANGLES, 0, 3);
+    glBindVertexArray(0);
+}
+
+// EL SHAKL EL "COMPLEX" EL WA7EED (lel 2amarein bas): ellipse (dayra)
+// 32 triangle kolohom bybda2o men el nos zay 7etat el pizza (GL_TRIANGLE_FAN)
+// el no2ta i 3ala el 7erf: zawya = i * 360 / 32, w x = cos(zawya), y = sin(zawya)
+// el nos leh lon w el 7erf leh lon (3ashan teban kora b nour)
+void drawEllipse(float x, float y, float radiusX, float radiusY,
+                 float rCenter, float gCenter, float bCenter,
+                 float rEdge, float gEdge, float bEdge) {
+    const int SLICES = 32;
+    float vertices[(SLICES + 2) * 6];
+
+    // El nos
+    vertices[0] = x;
+    vertices[1] = y;
+    vertices[2] = 0.0f;
+    vertices[3] = rCenter;
+    vertices[4] = gCenter;
+    vertices[5] = bCenter;
+
+    // El no2at 3ala el 7erf (el a5eera = el awla 3ashan ne2fel el dayra)
+    for (int i = 0; i <= SLICES; i++) {
+        float angle = i * 6.2832f / SLICES;
+        float* v = vertices + (i + 1) * 6;
+
+        v[0] = x + cos(angle) * radiusX;
+        v[1] = y + sin(angle) * radiusY;
+        v[2] = 0.0f;
+        v[3] = rEdge;
+        v[4] = gEdge;
+        v[5] = bEdge;
+    }
+
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices);
+    glDrawArrays(GL_TRIANGLE_FAN, 0, SLICES + 2);
     glBindVertexArray(0);
 }
 
@@ -1596,104 +1644,128 @@ void drawPauseMenu() {
 }
 
 // ==========================================
-// El arena (Arrakis) - rectangles w triangles bas
+// El arena (Arrakis) w el main menu
 // ==========================================
+// Kolo rectangles w triangles w gradients. El ellipse bas lel 2amarein.
+//
+// El 7araka (fel 5alfeya bas - el lanes sabta):
+//   - 7abbet raml tayra lel shmal
+//   - el negoom betlama3
+//   - el spice 3ala el sa5r w fel raml beyenawar w yehda
 
-// 2amar: morab3 + morab3 tany 3ard (3ashan yeb2a mdawwar shwaya zay pixel art) + 2 7ofar
-void drawMoon(float x, float y, float size) {
-    float sizeX = size * height / width;
-
-    drawRectangle(sizeX * 1.3f, size, x, y, 0.86f, 0.51f, 0.27f);
-    drawRectangle(sizeX, size * 1.3f, x, y, 0.86f, 0.51f, 0.27f);
-    drawRectangle(sizeX * 1.1f, size * 0.8f, x, y, 0.98f, 0.94f, 0.84f);
-    drawRectangle(sizeX * 0.8f, size * 1.1f, x, y, 0.98f, 0.94f, 0.84f);
-    drawRectangle(sizeX * 0.25f, size * 0.25f, x - sizeX * 0.2f, y + size * 0.2f, 0.88f, 0.82f, 0.70f);
-    drawRectangle(sizeX * 0.18f, size * 0.18f, x + sizeX * 0.25f, y - size * 0.2f, 0.88f, 0.82f, 0.70f);
+// Makan 7aga mashya men el yemeen lel shmal w btelef (lama tetla3 men el shmal terga3 men el yemeen)
+// travel = mashet kam, length = tool el lafa
+// masalan travel = 2.5 w length = 2.2 -> 3amalet lafa kamla w 0.3 -> x = 1.1 - 0.3 = 0.8
+float loopX(float travel, float length) {
+    int laps = (int)(travel / length);
+    return length / 2.0f - (travel - laps * length);
 }
 
-// Sa5ra 3aleya (mesa): dor wase3 ta7t, gesm, ras ad2a2, w nour 3al gamb
+// Nour el spice beyenawar w yehda bel ra7a (men 0.6 le 1.0)
+// kol wa7da leha offset 3ashan mayenawaroosh kolohom ma3 ba3d
+float spiceGlow(float t, int i) {
+    return 0.8f + 0.2f * sin(t * 2.0f + i);
+}
+
+// 2amar: nour 7awaleeh (lono beyetla3 le lon el sama), el 2amar (fate7 fel nos w agham2
+// 3al 7erf 3ashan yeban kora), w 3 7ofar
+void drawMoon(float x, float y, float radius, float skyR, float skyG, float skyB) {
+    float rx = radius * height / width;
+
+    drawEllipse(x, y, rx * 1.5f, radius * 1.5f, 0.98f, 0.70f, 0.42f, skyR, skyG, skyB);
+    drawEllipse(x, y, rx, radius, 1.0f, 0.97f, 0.90f, 0.92f, 0.78f, 0.60f);
+    drawEllipse(x - rx * 0.3f, y + radius * 0.25f, rx * 0.22f, radius * 0.22f, 0.86f, 0.78f, 0.64f, 0.92f, 0.84f, 0.70f);
+    drawEllipse(x + rx * 0.35f, y - radius * 0.2f, rx * 0.15f, radius * 0.15f, 0.86f, 0.78f, 0.64f, 0.92f, 0.84f, 0.70f);
+    drawEllipse(x + rx * 0.05f, y - radius * 0.45f, rx * 0.1f, radius * 0.1f, 0.86f, 0.78f, 0.64f, 0.92f, 0.84f, 0.70f);
+}
+
+// Negoom betlama3: kol negma kol shwaya tenawar aw tehda
+void drawStars(float t, float minY) {
+    for (int i = 0; i < 24; i++) {
+        float x = -0.97f + i * 0.083f;
+        float y = minY + (i * 7 % 10) * (1.0f - minY) / 10.0f;
+
+        float bright = 0.9f;
+        if (((int)(t * 2.0f) + i) % 4 == 0)
+            bright = 0.45f;
+
+        drawRectangle(0.005f, 0.007f, x, y, bright, bright * 0.88f, bright * 0.75f);
+    }
+}
+
+// Shakl saff kseeban: ertefa3 el 2emma 3and x = base + mawgateen sin fo2 ba3d
+// (wa7da kbeera bel ra7a w wa7da soghayara asra3 - 3ashan el shakl yeb2a tabee3y)
+struct DuneShape {
+    float base;
+    float a1, f1, p1;  // el mawga el kbeera: ertefa3, sor3a, bedaya
+    float a2, f2, p2;  // el mawga el soghayara
+};
+
+float duneTop(DuneShape d, float x) {
+    return d.base + d.a1 * sin(d.f1 * x + d.p1) + d.a2 * sin(d.f2 * x + d.p2);
+}
+
+// Saff kseeban na3em: 60 3amood rofa3 gamb ba3d, bas badal ma kol wa7ed rectangle
+// (60 draw call w shakl salalem) bnewassal el 2emam b triangles (triangle strip):
+// kol 2 no2at (fo2 3and el 2emma, w ta7t 3and bottomY) - el GPU byersem triangle ben kol 3
+// fa el 7awaf betetla3 mayla na3ma, w kolo draw call wa7da.
+// El lon gradient men fo2 le ta7t, w 3al 2emma 5att nour rofayya3 (strip tany)
+void drawDuneLayer(DuneShape d, float bottomY,
+                   float rTop, float gTop, float bTop,
+                   float rBottom, float gBottom, float bBottom,
+                   float rLight, float gLight, float bLight) {
+    const int SEGMENTS = 60;
+    float body[(SEGMENTS + 1) * 12];
+    float crest[(SEGMENTS + 1) * 12];
+
+    for (int i = 0; i <= SEGMENTS; i++) {
+        float x = -1.0f + 2.0f * i / SEGMENTS;
+        float top = duneTop(d, x);
+
+        float bodyPoints[12] = {
+            x, top,     0.0f, rTop,    gTop,    bTop,
+            x, bottomY, 0.0f, rBottom, gBottom, bBottom
+        };
+        float crestPoints[12] = {
+            x, top,          0.0f, rLight, gLight, bLight,
+            x, top - 0.008f, 0.0f, rLight, gLight, bLight
+        };
+
+        for (int k = 0; k < 12; k++) {
+            body[i * 12 + k] = bodyPoints[k];
+            crest[i * 12 + k] = crestPoints[k];
+        }
+    }
+
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(body), body);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, (SEGMENTS + 1) * 2);
+
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(crest), crest);
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, (SEGMENTS + 1) * 2);
+
+    glBindVertexArray(0);
+}
+
+// Mesa (sa5ra 3aleya): manadeer 3al atraf (triangles), gesm gradient, nour shmal, dell yemeen,
+// taba2at sa5r, w sath
 void drawMesa(float x, float baseY, float w, float h) {
-    drawRectangle(w * 1.35f, h * 0.3f, x, baseY + h * 0.15f, 0.45f, 0.27f, 0.17f);
-    drawRectangle(w, h, x, baseY + h / 2.0f, 0.48f, 0.29f, 0.18f);
-    drawRectangle(w * 0.75f, h * 0.25f, x, baseY + h * 1.125f, 0.50f, 0.30f, 0.18f);
-    drawRectangle(w * 0.22f, h, x - w * 0.39f, baseY + h / 2.0f, 0.65f, 0.42f, 0.26f);
+    drawTriangle(x - w * 0.8f, baseY, x - w * 0.5f, baseY, x - w * 0.5f, baseY + h * 0.6f, 0.62f, 0.40f, 0.26f);
+    drawTriangle(x + w * 0.5f, baseY, x + w * 0.8f, baseY, x + w * 0.5f, baseY + h * 0.6f, 0.38f, 0.22f, 0.15f);
+
+    drawGradientRectangle(w, h, x, baseY + h / 2.0f, 0.60f, 0.37f, 0.24f, 0.44f, 0.27f, 0.18f);
+    drawGradientRectangle(w * 0.2f, h, x - w * 0.4f, baseY + h / 2.0f, 0.80f, 0.56f, 0.36f, 0.60f, 0.40f, 0.26f);
+    drawRectangle(w * 0.22f, h, x + w * 0.39f, baseY + h / 2.0f, 0.36f, 0.21f, 0.14f);
+
+    for (int i = 1; i < 3; i++)
+        drawRectangle(w, h * 0.04f, x, baseY + h * i / 3.0f, 0.40f, 0.24f, 0.16f);
+
+    drawRectangle(w * 1.06f, h * 0.08f, x, baseY + h, 0.74f, 0.50f, 0.32f);
 }
 
-// Saff kseeban: triangles gamb ba3d (kol wa7ed ertefa3o mo5talef)
-void drawDunes(float baseY, float duneHeight, float offset, float r, float g, float b) {
-    for (int i = 0; i < 8; i++) {
-        float x = -1.2f + i * 0.32f + offset;
-        float h = duneHeight;
-        if (i % 2 == 1)
-            h = duneHeight * 0.6f;
-
-        drawTriangle(x - 0.25f, baseY, x + 0.25f, baseY, x, baseY + h, r, g, b);
-    }
-}
-
-// Ornithopter (tayyara zay el yaasoob): gesm, kabeena, deil, w 2 agne7a men triangles
-// s = el 7agm (1 = 3adi), dark = soora sooda 3ala el 2amar
-void drawOrnithopter(float x, float y, float s) {
-    float r = 0.22f, g = 0.17f, b = 0.14f;
-
-    // El agne7a (wara el gesm): etnen fo2 w etnen ta7t mayleen
-    drawTriangle(x - 0.02f * s, y, x + 0.02f * s, y, x - 0.08f * s, y + 0.05f * s, 0.30f, 0.25f, 0.21f);
-    drawTriangle(x - 0.02f * s, y, x + 0.02f * s, y, x + 0.04f * s, y + 0.055f * s, 0.30f, 0.25f, 0.21f);
-    drawTriangle(x - 0.02f * s, y, x + 0.02f * s, y, x - 0.07f * s, y - 0.03f * s, 0.30f, 0.25f, 0.21f);
-    drawTriangle(x - 0.02f * s, y, x + 0.02f * s, y, x + 0.05f * s, y - 0.035f * s, 0.30f, 0.25f, 0.21f);
-
-    // El gesm w el deil
-    drawRectangle(0.09f * s, 0.022f * s, x, y, r, g, b);
-    drawRectangle(0.06f * s, 0.008f * s, x + 0.07f * s, y + 0.004f * s, r, g, b);
-    drawRectangle(0.008f * s, 0.022f * s, x + 0.10f * s, y + 0.01f * s, r, g, b);
-
-    // El kabeena (shebbak fate7 oddam)
-    drawTriangle(x - 0.045f * s, y + 0.011f * s, x - 0.045f * s, y - 0.011f * s, x - 0.07f * s, y - 0.004f * s, r, g, b);
-    drawRectangle(0.022f * s, 0.010f * s, x - 0.03f * s, y + 0.004f * s, 0.75f, 0.62f, 0.40f);
-}
-
-// Spice harvester: 3arabeyya kbeera bel 3agal, kabeena fo2, w torab spice tale3 wara
-void drawHarvester(float x, float y, float s) {
-    // Torab el spice (bortoo2any) tale3 men wara
-    drawTriangle(x + 0.03f * s, y + 0.03f * s, x + 0.09f * s, y + 0.03f * s, x + 0.13f * s, y + 0.10f * s, 0.95f, 0.55f, 0.20f);
-    drawTriangle(x + 0.06f * s, y + 0.03f * s, x + 0.12f * s, y + 0.03f * s, x + 0.17f * s, y + 0.07f * s, 0.98f, 0.70f, 0.35f);
-
-    // El 3agal (sooda) w 3alehom 7etat fat7a
-    drawRectangle(0.15f * s, 0.022f * s, x, y + 0.011f * s, 0.15f, 0.12f, 0.10f);
-    for (int i = 0; i < 6; i++)
-        drawRectangle(0.012f * s, 0.008f * s, x - 0.06f * s + i * 0.024f * s, y + 0.011f * s, 0.38f, 0.32f, 0.26f);
-
-    // El gesm (ramady me7a2a2) w 5att ta7to
-    drawRectangle(0.13f * s, 0.045f * s, x, y + 0.045f * s, 0.46f, 0.40f, 0.34f);
-    drawRectangle(0.13f * s, 0.006f * s, x, y + 0.025f * s, 0.30f, 0.25f, 0.21f);
-
-    // El kabeena w shebbakha, w el antenna
-    drawRectangle(0.045f * s, 0.025f * s, x - 0.035f * s, y + 0.078f * s, 0.40f, 0.35f, 0.30f);
-    drawRectangle(0.030f * s, 0.010f * s, x - 0.038f * s, y + 0.080f * s, 0.95f, 0.75f, 0.35f);
-    drawRectangle(0.004f * s, 0.035f * s, x + 0.03f * s, y + 0.085f * s, 0.30f, 0.25f, 0.21f);
-}
-
-// Dahr sandworm tale3 men el raml: 3awameed (el nos a3la) w 7ala2at gham2a
-void drawWormHump(float x, float y, float s) {
-    for (int i = -5; i <= 5; i++) {
-        int distance = i;
-        if (distance < 0)
-            distance = -distance;
-
-        float h = (0.05f - distance * 0.008f) * s;
-        float shade = 0.0f;
-        if (i % 2 == 0)
-            shade = 0.06f;
-
-        drawRectangle(0.016f * s, h, x + i * 0.016f * s, y + h / 2.0f, 0.58f - shade, 0.42f - shade, 0.30f - shade);
-    }
-
-    // Raml beyetrash men 3and el atraf
-    drawTriangle(x - 0.11f * s, y, x - 0.07f * s, y, x - 0.10f * s, y + 0.025f * s, 0.97f, 0.80f, 0.55f);
-    drawTriangle(x + 0.07f * s, y, x + 0.11f * s, y, x + 0.10f * s, y + 0.025f * s, 0.97f, 0.80f, 0.55f);
-}
-
-// Madeena fel sa7ra (zay Arrakeen): mabany morab3a 3la ba3d w shababeek sooda w borg
+// Madeena fel sa7ra: mabany gradient b nour 3al shmal, shababeek menawara, sto7 b salalem, w borg
 void drawDesertCity(float x, float y) {
     float heights[6] = {0.05f, 0.08f, 0.06f, 0.11f, 0.07f, 0.045f};
 
@@ -1701,83 +1773,64 @@ void drawDesertCity(float x, float y) {
         float bx = x + i * 0.035f;
         float h = heights[i];
 
-        drawRectangle(0.034f, h, bx, y + h / 2.0f, 0.62f, 0.45f, 0.32f);
-        drawRectangle(0.008f, h, bx - 0.013f, y + h / 2.0f, 0.75f, 0.58f, 0.42f);
+        drawGradientRectangle(0.034f, h, bx, y + h / 2.0f, 0.70f, 0.52f, 0.37f, 0.52f, 0.37f, 0.26f);
+        drawRectangle(0.008f, h, bx - 0.013f, y + h / 2.0f, 0.80f, 0.64f, 0.46f);
 
-        // Shababeek
+        // Sath b dorr asghar fo2o
+        drawRectangle(0.020f, 0.012f, bx, y + h + 0.006f, 0.62f, 0.46f, 0.32f);
+
         for (int k = 1; k * 0.02f < h; k++)
-            drawRectangle(0.008f, 0.006f, bx + 0.004f, y + k * 0.02f, 0.25f, 0.16f, 0.11f);
+            drawRectangle(0.007f, 0.006f, bx + 0.004f, y + k * 0.02f, 1.0f, 0.78f, 0.40f);
     }
 
-    // Borg el moraqaba fel nos b sa2f mosallas
-    drawRectangle(0.014f, 0.16f, x + 0.105f, y + 0.08f, 0.55f, 0.40f, 0.28f);
+    drawGradientRectangle(0.014f, 0.16f, x + 0.105f, y + 0.08f, 0.66f, 0.49f, 0.35f, 0.50f, 0.36f, 0.25f);
     drawTriangle(x + 0.095f, y + 0.16f, x + 0.115f, y + 0.16f, x + 0.105f, y + 0.19f, 0.55f, 0.40f, 0.28f);
+    drawRectangle(0.006f, 0.006f, x + 0.105f, y + 0.14f, 1.0f, 0.78f, 0.40f);
 }
 
-// Bawwabet el Harkonnen 3al yemeen (men henak el enemies btedkhol): 7adeed eswed w nour a7mar
-void drawEnemyGate(float y) {
-    drawRectangle(0.08f, 0.26f, 0.965f, y, 0.10f, 0.09f, 0.10f);
-    drawRectangle(0.06f, 0.24f, 0.965f, y, 0.20f, 0.18f, 0.20f);
-
-    // 5otoot 7adeed
-    for (int i = 0; i < 4; i++)
-        drawRectangle(0.06f, 0.008f, 0.965f, y - 0.09f + i * 0.06f, 0.12f, 0.11f, 0.12f);
-
-    // Shoka fo2 w nour a7mar
-    drawTriangle(0.935f, y + 0.13f, 0.995f, y + 0.13f, 0.965f, y + 0.18f, 0.10f, 0.09f, 0.10f);
-    drawRectangle(0.03f, 0.012f, 0.965f, y + 0.10f, 0.85f, 0.10f, 0.08f);
-    drawRectangle(0.012f, 0.012f, 0.965f, y + 0.10f, 1.0f, 0.55f, 0.45f);
-}
-
-// Wind trap (bey-lamm el maya men el hawa): 3amood + ras mosallas + ze3aneef
-void drawWindTrap(float x, float y) {
-    drawRectangle(0.03f, 0.07f, x, y + 0.035f, 0.42f, 0.42f, 0.44f);
-    drawRectangle(0.006f, 0.07f, x - 0.01f, y + 0.035f, 0.58f, 0.58f, 0.60f);
+// Wind trap: 3amood gradient (nour shmal), ze3aneef, ras mosallas
+void drawWindTrap(float x, float y, float s) {
+    drawGradientRectangle(0.03f * s, 0.07f * s, x, y + 0.035f * s, 0.55f, 0.55f, 0.58f, 0.35f, 0.35f, 0.38f);
+    drawRectangle(0.006f * s, 0.07f * s, x - 0.01f * s, y + 0.035f * s, 0.70f, 0.70f, 0.72f);
 
     for (int i = 0; i < 3; i++)
-        drawRectangle(0.036f, 0.005f, x, y + 0.015f + i * 0.02f, 0.25f, 0.25f, 0.27f);
+        drawRectangle(0.036f * s, 0.005f * s, x, y + (0.015f + i * 0.02f) * s, 0.25f, 0.25f, 0.27f);
 
-    drawTriangle(x - 0.024f, y + 0.07f, x + 0.024f, y + 0.07f, x, y + 0.10f, 0.32f, 0.32f, 0.35f);
+    drawTriangle(x - 0.024f * s, y + 0.07f * s, x + 0.024f * s, y + 0.07f * s, x, y + 0.10f * s, 0.40f, 0.40f, 0.44f);
 }
 
-// El sama w ba3eed (bnesta5demha fel arena w fel main menu)
-void drawBackground() {
-    // El sama: 3 shera2et men gham2 fo2 le fate7 3and el ofo2
-    drawRectangle(2.0f, 0.4f, 0.0f, 0.80f, 0.42f, 0.17f, 0.10f);
-    drawRectangle(2.0f, 0.4f, 0.0f, 0.40f, 0.70f, 0.34f, 0.16f);
-    drawRectangle(2.0f, 1.4f, 0.0f, -0.30f, 0.95f, 0.65f, 0.38f);
+// 7abbet raml tayra (betemshy lel shmal kol wa7da b sor3a mo5talefa) fel 7etta men minY le maxY
+void drawDust(float t, float minY, float maxY, int count) {
+    for (int i = 0; i < count; i++) {
+        float speed = 0.05f + (i % 4) * 0.02f;
+        float x = loopX(t * speed + i * 0.37f, 2.2f);
+        float y = minY + (i * 13 % 17) / 17.0f * (maxY - minY);
 
-    // Negoom soghayara fel gham2
-    for (int i = 0; i < 12; i++)
-        drawRectangle(0.006f, 0.008f, -0.95f + i * 0.17f, 0.97f - (i % 3) * 0.05f, 0.95f, 0.85f, 0.70f);
-
-    // El 2amarein bto3 Arrakis
-    drawMoon(0.46f, 0.79f, 0.15f);
-    drawMoon(-0.17f, 0.88f, 0.07f);
-
-    // Sa5r be3eed
-    drawMesa(-0.18f, 0.62f, 0.12f, 0.12f);
-    drawMesa(0.97f, 0.62f, 0.10f, 0.08f);
-
-    // Ornithopters fel sama (wa7da oddam el 2amar el kebeer)
-    drawOrnithopter(0.46f, 0.74f, 0.8f);
-    drawOrnithopter(-0.62f, 0.84f, 0.6f);
-
-    // Kseeban be3eeda w 2orayyeba
-    drawDunes(0.60f, 0.10f, 0.0f, 0.88f, 0.62f, 0.38f);
-    drawDunes(0.60f, 0.06f, 0.16f, 0.80f, 0.55f, 0.33f);
-
-    // 3al ofo2: el madeena, el harvester beyetla3 spice, w worm gay 3aleh
-    drawDesertCity(-0.27f, 0.61f);
-    drawHarvester(0.20f, 0.61f, 0.8f);
-    drawWormHump(0.72f, 0.61f, 1.0f);
+        drawRectangle(0.006f, 0.005f, x, y, 1.0f, 0.90f, 0.70f);
+    }
 }
 
-// El fasel el sa5ry ben el lanes: sa5r + nour fo2 + dell ta7t + 7agar + spice
-void drawRockRidge(float y, float h) {
-    drawRectangle(2.0f, h, 0.0f, y, 0.52f, 0.35f, 0.23f);
-    drawRectangle(2.0f, 0.008f, 0.0f, y + h / 2.0f - 0.004f, 0.78f, 0.60f, 0.42f);
-    drawRectangle(2.0f, 0.008f, 0.0f, y - h / 2.0f + 0.004f, 0.24f, 0.15f, 0.10f);
+// Bawwabet el Harkonnen 3al yemeen: 7adeed gradient, 5otoot, shoka, w nour a7mar
+void drawEnemyGate(float y) {
+    drawRectangle(0.08f, 0.26f, 0.965f, y, 0.08f, 0.07f, 0.08f);
+    drawGradientRectangle(0.06f, 0.24f, 0.965f, y, 0.30f, 0.27f, 0.30f, 0.14f, 0.12f, 0.14f);
+    drawRectangle(0.012f, 0.24f, 0.945f, y, 0.38f, 0.35f, 0.38f);
+
+    for (int i = 0; i < 4; i++)
+        drawRectangle(0.06f, 0.008f, 0.965f, y - 0.09f + i * 0.06f, 0.10f, 0.09f, 0.10f);
+
+    drawTriangle(0.935f, y + 0.13f, 0.995f, y + 0.13f, 0.965f, y + 0.18f, 0.12f, 0.10f, 0.12f);
+    drawRectangle(0.04f, 0.022f, 0.965f, y + 0.10f, 0.45f, 0.08f, 0.06f);
+    drawRectangle(0.026f, 0.012f, 0.965f, y + 0.10f, 0.95f, 0.18f, 0.12f);
+    drawRectangle(0.010f, 0.006f, 0.965f, y + 0.10f, 1.0f, 0.60f, 0.50f);
+}
+
+// El fasel el sa5ry ben el lanes: sa5r gradient, nour fo2, dell ta7t, 7agar (gamb fel dell
+// w gamb fel nour), w spice beyenawar
+void drawRockRidge(float y, float h, float t) {
+    drawGradientRectangle(2.0f, h, 0.0f, y, 0.64f, 0.45f, 0.30f, 0.33f, 0.21f, 0.14f);
+    drawRectangle(2.0f, 0.008f, 0.0f, y + h / 2.0f - 0.004f, 0.80f, 0.62f, 0.44f);
+    drawRectangle(2.0f, 0.008f, 0.0f, y - h / 2.0f + 0.004f, 0.22f, 0.14f, 0.09f);
 
     for (int i = 0; i < 9; i++) {
         float x = -0.88f + i * 0.22f;
@@ -1787,108 +1840,154 @@ void drawRockRidge(float y, float h) {
         drawRectangle(0.045f, 0.018f, x, y - h * 0.05f, 0.40f, 0.26f, 0.17f);
         drawRectangle(0.028f, 0.010f, x - 0.004f, y + h * 0.05f, 0.58f, 0.41f, 0.27f);
 
-        // Spice bortoo2any kol talat 7agar
-        if (i % 3 == 1)
-            drawRectangle(0.012f, 0.012f, x + 0.08f, y + h * 0.1f, 1.0f, 0.55f, 0.15f);
+        if (i % 3 == 1) {
+            float glow = spiceGlow(t, i);
+            drawRectangle(0.014f, 0.014f, x + 0.08f, y + h * 0.1f, 0.95f * glow, 0.50f * glow, 0.12f * glow);
+            drawRectangle(0.006f, 0.006f, x + 0.08f, y + h * 0.1f, glow, 0.85f * glow, 0.50f * glow);
+        }
     }
 }
 
-// El home base (sietch el Atreides) 3al shmal: soor 7agar + toob + bab fe kol lane + 3alam a5dar
+// El home base 3al shmal: soor 7agar gradient, toob mazboot zay el 7eta (kol saff mezaa7),
+// ashraf, bab fe kol lane (b sa2f mosallas), w 3alam a5dar
 void drawHomeBase() {
-    // El soor
-    drawRectangle(0.10f, 1.62f, -0.95f, -0.19f, 0.12f, 0.10f, 0.10f);
-    drawRectangle(0.08f, 1.60f, -0.955f, -0.19f, 0.36f, 0.38f, 0.40f);
+    drawRectangle(0.10f, 1.62f, -0.95f, -0.19f, 0.10f, 0.09f, 0.09f);
+    drawGradientRectangle(0.08f, 1.60f, -0.955f, -0.19f, 0.48f, 0.50f, 0.52f, 0.30f, 0.31f, 0.33f);
+    drawRectangle(0.014f, 1.60f, -0.988f, -0.19f, 0.56f, 0.58f, 0.60f);
 
-    // Toob el soor (5otoot ofo2eya)
-    for (int i = 0; i < 16; i++)
-        drawRectangle(0.08f, 0.006f, -0.955f, 0.58f - i * 0.1f, 0.26f, 0.27f, 0.29f);
+    // El toob: 5att ofo2y kol 0.05, w 5att ra2sy fel nos (mezaa7 fe saff w saff)
+    for (int i = 0; i < 32; i++) {
+        float rowY = 0.58f - i * 0.05f;
+        drawRectangle(0.08f, 0.005f, -0.955f, rowY, 0.24f, 0.25f, 0.27f);
+
+        float jointX = -0.965f;
+        if (i % 2 == 1)
+            jointX = -0.945f;
+        drawRectangle(0.004f, 0.05f, jointX, rowY - 0.025f, 0.24f, 0.25f, 0.27f);
+    }
 
     // Ashraf fo2 el soor
     for (int i = 0; i < 3; i++)
-        drawRectangle(0.022f, 0.04f, -0.985f + i * 0.03f, 0.63f, 0.36f, 0.38f, 0.40f);
+        drawGradientRectangle(0.022f, 0.04f, -0.985f + i * 0.03f, 0.63f, 0.52f, 0.54f, 0.56f, 0.40f, 0.42f, 0.44f);
 
-    // Bab fe kol lane (el players byetla3o meno)
+    // Bab fe kol lane: 7erf 5ashab, gowa gradient eswed, w sa2f mosallas
     for (int i = 0; i < 4; i++) {
-        drawRectangle(0.05f, 0.17f, -0.94f, LANE_Y[i] - 0.03f, 0.18f, 0.12f, 0.08f);
-        drawRectangle(0.038f, 0.15f, -0.94f, LANE_Y[i] - 0.035f, 0.08f, 0.05f, 0.03f);
-        drawTriangle(-0.965f, LANE_Y[i] + 0.055f, -0.915f, LANE_Y[i] + 0.055f,
-                     -0.94f, LANE_Y[i] + 0.085f, 0.18f, 0.12f, 0.08f);
+        float gy = LANE_Y[i] - 0.03f;
+
+        drawRectangle(0.064f, 0.17f, -0.94f, gy, 0.24f, 0.17f, 0.11f);
+        drawGradientRectangle(0.044f, 0.15f, -0.94f, gy - 0.005f, 0.05f, 0.03f, 0.02f, 0.15f, 0.10f, 0.07f);
+        drawTriangle(-0.975f, gy + 0.085f, -0.905f, gy + 0.085f, -0.94f, gy + 0.12f, 0.24f, 0.17f, 0.11f);
     }
 
-    // El 3alam: 3amood + 3alam a5dar (Atreides) + sa2r dahaby
+    // El 3alam: 3amood + 3alam a5dar b lonen + 3alama dahaby
     drawRectangle(0.008f, 0.08f, -0.97f, 0.66f, 0.25f, 0.2f, 0.15f);
-    drawTriangle(-0.966f, 0.70f, -0.966f, 0.64f, -0.89f, 0.67f, 0.15f, 0.55f, 0.25f);
+    drawTriangle(-0.966f, 0.70f, -0.966f, 0.64f, -0.89f, 0.67f, 0.20f, 0.62f, 0.30f);
+    drawTriangle(-0.966f, 0.67f, -0.966f, 0.64f, -0.89f, 0.67f, 0.10f, 0.42f, 0.18f);
     drawRectangle(0.012f, 0.016f, -0.948f, 0.67f, 0.95f, 0.8f, 0.3f);
 }
 
 // El arena kolaha
-void drawArena() {
-    drawBackground();
+void drawArena(float t) {
+    // ===== El sama =====
+    drawGradientRectangle(2.0f, 0.20f, 0.0f, 0.90f, 0.32f, 0.12f, 0.09f, 0.70f, 0.32f, 0.16f);
+    drawGradientRectangle(2.0f, 0.20f, 0.0f, 0.70f, 0.70f, 0.32f, 0.16f, 0.99f, 0.78f, 0.50f);
+    drawStars(t, 0.82f);
 
-    // El ard ta7t el kseeban
+    drawMoon(0.46f, 0.80f, 0.075f, 0.70f, 0.32f, 0.16f);
+    drawMoon(-0.17f, 0.88f, 0.035f, 0.50f, 0.22f, 0.12f);
+
+    // ===== El ba3eed: kseeban be3eeda, sa5r, el madeena, w kseeban 2orayyeba =====
+    DuneShape farDunes  = {0.71f,  0.045f, 2.7f, 0.6f, 0.020f, 6.9f, 2.1f};
+    DuneShape nearDunes = {0.655f, 0.025f, 3.9f, 2.4f, 0.012f, 9.7f, 0.3f};
+
+    drawDuneLayer(farDunes, 0.60f,
+                  0.93f, 0.70f, 0.45f,  0.82f, 0.56f, 0.34f,  0.99f, 0.84f, 0.60f);
+
+    drawMesa(-0.55f, 0.64f, 0.10f, 0.09f);
+    drawMesa(0.97f, 0.64f, 0.10f, 0.07f);
+    drawDesertCity(-0.27f, 0.63f);
+
+    drawDuneLayer(nearDunes, 0.60f,
+                  0.86f, 0.60f, 0.36f,  0.74f, 0.50f, 0.30f,  0.95f, 0.74f, 0.50f);
+
+    drawDust(t, 0.62f, 0.74f, 16);
+
+    // ===== El ard w el fawasel el sa5reyya =====
     drawRectangle(2.0f, 1.62f, 0.0f, -0.19f, 0.80f, 0.60f, 0.38f);
 
-    // El fasel elly fo2 el lanes, w benhom, w ta7t
-    drawRockRidge(0.585f, 0.07f);
+    drawRockRidge(0.585f, 0.07f, t);
     for (int i = 0; i < 4; i++)
-        drawRockRidge(LANE_Y[i] - 0.19f, 0.085f);
+        drawRockRidge(LANE_Y[i] - 0.19f, 0.085f, t);
 
-    // El lanes: dell + raml + dell rofayya3 fo2
+    // ===== El lanes: dell, raml gradient, dell rofayya3 fo2, w 7asa soghayara 3al atraf =====
     for (int i = 0; i < 4; i++) {
-        drawRectangle(1.89f, 0.30f, 0.0f, LANE_Y[i] - 0.012f, 0.33f, 0.22f, 0.15f);
-        drawRectangle(1.85f, 0.28f, 0.0f, LANE_Y[i], 0.58f, 0.43f, 0.30f);
-        drawRectangle(1.85f, 0.010f, 0.0f, LANE_Y[i] + 0.135f, 0.42f, 0.30f, 0.21f);
+        drawRectangle(1.89f, 0.30f, 0.0f, LANE_Y[i] - 0.012f, 0.30f, 0.20f, 0.13f);
+        drawGradientRectangle(1.85f, 0.28f, 0.0f, LANE_Y[i], 0.66f, 0.50f, 0.35f, 0.52f, 0.38f, 0.26f);
+        drawRectangle(1.85f, 0.012f, 0.0f, LANE_Y[i] + 0.134f, 0.40f, 0.28f, 0.19f);
+
+        for (int k = 0; k < 12; k++) {
+            float px = -0.82f + k * 0.15f + (k % 3) * 0.02f;
+            float py = LANE_Y[i] - 0.12f;
+            if (k % 2 == 1)
+                py = LANE_Y[i] + 0.11f;
+
+            drawRectangle(0.010f, 0.007f, px, py, 0.46f, 0.33f, 0.22f);
+        }
     }
 
-    // Bawwabat el Harkonnen 3al yemeen (fe kol lane)
     for (int i = 0; i < 4; i++)
         drawEnemyGate(LANE_Y[i]);
 
     drawHomeBase();
 
-    // Wind traps gamb el home base (el Atreides byelammo beha el maya)
-    drawWindTrap(-0.84f, 0.62f);
-    drawWindTrap(-0.77f, 0.62f);
+    drawWindTrap(-0.84f, 0.62f, 1.0f);
+    drawWindTrap(-0.77f, 0.62f, 1.0f);
 }
 
-// El main menu: el sama w el kseeban + raml + el esm + el zarayer
-void drawMainMenu() {
-    drawBackground();
-    drawRectangle(2.0f, 1.6f, 0.0f, -0.2f, 0.80f, 0.55f, 0.33f);
+// El main menu: ghoroob 3ala Arrakis - sama gradient, 2amarein, negoom, 3 soffof kseeban
+// na3ma, sa5r kbeer 3al yemeen, mo3askar Atreides soghayar (wind traps) 3al shmal,
+// spice beyenawar, w raml tayer
+void drawMainMenu(float t) {
+    drawGradientRectangle(2.0f, 0.70f, 0.0f, 0.65f, 0.18f, 0.07f, 0.06f, 0.55f, 0.22f, 0.10f);
+    drawGradientRectangle(2.0f, 0.62f, 0.0f, -0.01f, 0.55f, 0.22f, 0.10f, 0.95f, 0.62f, 0.32f);
+    drawStars(t, 0.62f);
 
-    // Sandworm kbeer tale3 men el raml 3al yemeen: 7ala2at fo2 ba3d, w bo2o maftoo7 b snan
-    for (int k = 0; k < 6; k++) {
-        float y = -0.40f + k * 0.075f;
-        float x = 0.68f - k * 0.012f;
-        float w = 0.22f - k * 0.006f;
+    drawMoon(0.62f, 0.75f, 0.14f, 0.30f, 0.12f, 0.08f);
+    drawMoon(-0.68f, 0.82f, 0.05f, 0.25f, 0.10f, 0.07f);
 
-        drawRectangle(w, 0.075f, x, y, 0.55f, 0.40f, 0.28f);
-        drawRectangle(w, 0.012f, x, y - 0.03f, 0.40f, 0.28f, 0.19f);
-        drawRectangle(w * 0.15f, 0.075f, x - w * 0.42f, y, 0.68f, 0.52f, 0.38f);
+    // El kseeban el be3eeda, w 3aleha sa5r kbeer 3al yemeen w soghayar 3al shmal
+    DuneShape backDunes  = {-0.22f, 0.07f, 2.1f, 0.4f, 0.030f, 5.3f, 1.9f};
+    DuneShape midDunes   = {-0.47f, 0.06f, 2.9f, 2.2f, 0.025f, 7.1f, 0.8f};
+    DuneShape frontDunes = {-0.74f, 0.05f, 3.7f, 1.1f, 0.020f, 8.9f, 2.6f};
+
+    drawMesa(0.72f, -0.26f, 0.20f, 0.26f);
+    drawMesa(0.52f, -0.24f, 0.10f, 0.14f);
+    drawMesa(-0.40f, -0.22f, 0.08f, 0.08f);
+
+    drawDuneLayer(backDunes, -1.0f,
+                  0.86f, 0.58f, 0.34f,  0.70f, 0.45f, 0.26f,  0.97f, 0.78f, 0.52f);
+
+    // Mo3askar Atreides soghayar 3al kseeban el wustaneyya (talat wind traps)
+    drawWindTrap(-0.72f, -0.47f, 1.6f);
+    drawWindTrap(-0.62f, -0.44f, 2.0f);
+    drawWindTrap(-0.52f, -0.46f, 1.4f);
+
+    drawDuneLayer(midDunes, -1.0f,
+                  0.76f, 0.48f, 0.27f,  0.58f, 0.35f, 0.20f,  0.88f, 0.64f, 0.40f);
+    drawDuneLayer(frontDunes, -1.0f,
+                  0.62f, 0.38f, 0.21f,  0.42f, 0.25f, 0.14f,  0.75f, 0.52f, 0.32f);
+
+    // Spice benawwar fel raml el 2orayyeb
+    for (int i = 0; i < 14; i++) {
+        float glow = spiceGlow(t, i);
+        float x = -0.92f + i * 0.14f;
+        float y = duneTop(frontDunes, x) - 0.06f - (i % 3) * 0.06f;
+
+        drawRectangle(0.014f, 0.014f, x, y, 0.95f * glow, 0.50f * glow, 0.12f * glow);
+        drawRectangle(0.006f, 0.006f, x, y, glow, 0.85f * glow, 0.50f * glow);
     }
 
-    // El bo2: 7erf gham2, gowa eswed, w snan beyda men fo2 w ta7t
-    drawRectangle(0.24f, 0.06f, 0.61f, 0.04f, 0.36f, 0.25f, 0.17f);
-    drawRectangle(0.19f, 0.04f, 0.61f, 0.04f, 0.10f, 0.05f, 0.04f);
-    for (int i = 0; i < 6; i++) {
-        float tx = 0.525f + i * 0.03f;
-        drawTriangle(tx, 0.06f, tx + 0.02f, 0.06f, tx + 0.01f, 0.038f, 0.95f, 0.90f, 0.80f);
-        drawTriangle(tx, 0.02f, tx + 0.02f, 0.02f, tx + 0.01f, 0.042f, 0.95f, 0.90f, 0.80f);
-    }
-
-    // El kseeban el 2orayyeba (oddam regl el worm) w raml beyetrash
-    drawDunes(-0.4f, 0.25f, 0.1f, 0.70f, 0.46f, 0.27f);
-    drawRectangle(2.0f, 0.6f, 0.0f, -0.7f, 0.70f, 0.46f, 0.27f);
-    drawTriangle(0.45f, -0.40f, 0.55f, -0.40f, 0.47f, -0.30f, 0.97f, 0.80f, 0.55f);
-    drawTriangle(0.80f, -0.40f, 0.90f, -0.40f, 0.88f, -0.28f, 0.97f, 0.80f, 0.55f);
-
-    // Harvester kbeer 3al shmal w ornithopter gay yen2azo
-    drawHarvester(-0.68f, -0.42f, 2.2f);
-    drawOrnithopter(-0.62f, 0.08f, 1.6f);
-
-    // No2at spice bortoo2any fel raml
-    for (int i = 0; i < 14; i++)
-        drawRectangle(0.012f, 0.012f, -0.92f + i * 0.14f, -0.62f - (i % 3) * 0.1f, 1.0f, 0.55f, 0.15f);
+    drawDust(t, -0.95f, 0.1f, 30);
 
     drawTextShadow("ARRAKIS DEFENSE", 0.0f, 0.46f, 0.015f, 1.0f, 0.78f, 0.30f);
     drawTextShadow("THE SPICE MUST FLOW", 0.0f, 0.27f, 0.0075f, 1.0f, 0.92f, 0.78f);
@@ -1902,36 +2001,52 @@ void drawMainMenu() {
 // ==========================================
 // El cutscene (20 sanya 2abl el game)
 // ==========================================
+// Mashhad 1 (0 - 9 sanya): fel sa7ra el maftoo7a - el abtal mashyeen, el Harkonnen
+//                          yegoo, w ma3raka soghayara
+// Curtain eswed beyemsa7 el shasha (8.6 - 9.4)
+// Mashhad 2 (9 - 20 sanya): 3and el lanes - kol fare2 3and bawwabto, kalam, darb,
+//                           w esm el game, ba3den el game yebda2
 
 float cutsceneTime = 0.0f;
 float CUTSCENE_LENGTH = 20.0f;
 float CUTSCENE_SCALE = 0.7f;
+float SCENE_CHANGE_TIME = 9.0f;
 
-// Kol character: anhy sprite, anhy lane, beyemshy men fein le fein, emta,
-// w emta yedrab (-1 = mabyedrabsh)
+// Kol character: anhy sprite, anhy mashhad (0 = sa7ra, 1 = lanes), regleeh fein (y),
+// beyemshy men fein le fein w emta, w beyedrab men emta le emta (-1 = mabyedrabsh)
 struct CutsceneActor {
     int sprite;
-    int lane;
+    int scene;
+    float feetY;
     float startX;
     float endX;
     float walkStart;
     float walkEnd;
     float attackStart;
+    float attackEnd;
     bool isPlayer;
     const char* name;
 };
 
-// El enemies beyed5olo el awel men el yemeen, ba3den el abtal men el shmal
-CutsceneActor CUTSCENE_ACTORS[6] = {
-    {SPRITE_ATREIDES,  1, -1.15f, -0.35f, 8.4f, 10.0f, 14.9f, true,  "ATREIDES"},
-    {SPRITE_FREMEN,    0, -1.15f, -0.50f, 8.8f, 10.4f, 15.2f, true,  "FREMEN"},
-    {SPRITE_SARDAUKAR, 2, -1.15f, -0.45f, 9.2f, 10.8f, -1.0f, true,  "SARDAUKAR"},
-    {SPRITE_PILOT,     0,  1.15f,  0.50f, 4.4f, 6.0f,  15.8f, false, "HARKONNEN PILOT"},
-    {SPRITE_BRUTE,     2,  1.15f,  0.45f, 5.0f, 6.6f,  15.5f, false, "HARKONNEN BRUTE"},
-    {SPRITE_OFFICER,   1,  1.15f,  0.35f, 5.6f, 7.2f,  12.1f, false, "HARKONNEN OFFICER"},
+// (fel lanes: regleen lane 0 = 0.28, lane 1 = -0.10, lane 2 = -0.48)
+CutsceneActor CUTSCENE_ACTORS[10] = {
+    // Mashhad 1: el sa7ra (saffeen: wara 3and -0.40 w oddam 3and -0.50)
+    {SPRITE_ATREIDES,  0, -0.50f, -1.15f, -0.13f, 0.5f,  3.0f,  6.0f,  8.6f, true,  "ATREIDES"},
+    {SPRITE_FREMEN,    0, -0.40f, -1.15f, -0.65f, 0.9f,  3.4f,  6.3f,  8.6f, true,  "FREMEN"},
+    {SPRITE_OFFICER,   0, -0.50f,  1.15f,  0.03f, 3.2f,  5.5f,  6.0f,  8.6f, false, "HARKONNEN OFFICER"},
+    {SPRITE_BRUTE,     0, -0.40f,  1.15f,  0.45f, 3.6f,  5.8f,  6.5f,  8.6f, false, "HARKONNEN BRUTE"},
+
+    // Mashhad 2: el lanes (el abtal men bawwabat el home base, w el Harkonnen men bawwabathom)
+    {SPRITE_ATREIDES,  1, -0.10f, -1.00f, -0.08f, 9.4f,  11.4f, 16.0f, 18.2f, true,  "ATREIDES"},
+    {SPRITE_FREMEN,    1,  0.28f, -1.00f, -0.50f, 9.6f,  11.2f, 16.2f, 18.2f, true,  "FREMEN"},
+    {SPRITE_SARDAUKAR, 1, -0.48f, -1.00f, -0.45f, 9.8f,  11.4f, -1.0f, -1.0f, true,  "SARDAUKAR"},
+    {SPRITE_PILOT,     1,  0.28f,  1.00f,  0.50f, 10.6f, 12.2f, 16.4f, 18.2f, false, "HARKONNEN PILOT"},
+    {SPRITE_BRUTE,     1, -0.48f,  1.00f,  0.45f, 10.9f, 12.5f, 16.6f, 18.2f, false, "HARKONNEN BRUTE"},
+    {SPRITE_OFFICER,   1, -0.10f,  1.00f,  0.08f, 11.2f, 12.8f, 16.0f, 18.2f, false, "HARKONNEN OFFICER"},
 };
 
-// Kol gomla: emta tebda2 w te5las, meen beyetkalem (-1 = narration), w el kalam (satreen)
+// Kol gomla: emta tebda2 w te5las, meen beyetkalem (rakamo fel actors, -1 = narration),
+// w el kalam (satreen)
 struct CutsceneLine {
     float start;
     float end;
@@ -1940,13 +2055,14 @@ struct CutsceneLine {
     const char* line2;
 };
 
-CutsceneLine CUTSCENE_LINES[6] = {
-    {0.6f,  4.2f,  -1, "ARRAKIS, THE DESERT",  "PLANET OF SPICE."},
-    {4.2f,  8.2f,  -1, "HOUSE HARKONNEN",      "MARCHES FOR THE SPICE."},
-    {8.2f,  11.8f, -1, "ONLY THE ATREIDES",    "STAND IN THEIR WAY."},
-    {12.0f, 14.8f, 5,  "THIS SPICE IS OURS.",  "SURRENDER THE LANES!"},
-    {14.8f, 17.6f, 0,  "NEVER. WHILE WE",      "STAND, IT WILL FLOW!"},
-    {17.6f, 20.0f, -1, "",                     ""},
+CutsceneLine CUTSCENE_LINES[7] = {
+    {0.4f,  3.0f,  -1, "ARRAKIS, THE DESERT",   "PLANET OF SPICE."},
+    {3.0f,  5.8f,  -1, "HOUSE HARKONNEN CAME",  "TO TAKE IT ALL."},
+    {5.8f,  8.6f,   2, "THE SPICE IS OURS!",    "STAND ASIDE!"},
+    {9.2f,  12.4f, -1, "THEY FELL BACK TO THE", "ATREIDES STRONGHOLD."},
+    {12.6f, 15.6f,  9, "SURRENDER THE LANES,",  "OR BE BURIED IN SAND!"},
+    {15.6f, 18.2f,  4, "HOLD EVERY LANE!",      "THE SPICE MUST FLOW!"},
+    {18.2f, 20.0f, -1, "",                      ""},
 };
 
 void startGame() {
@@ -1966,7 +2082,16 @@ float actorX(CutsceneActor a) {
     return a.startX + (a.endX - a.startX) * t;
 }
 
-// Character: walk le 7ad makano, ba3den idle, w attack lama yedrab
+// Beyedrab delwa2ty?
+bool actorAttacking(CutsceneActor a) {
+    return a.attackStart >= 0.0f && cutsceneTime >= a.attackStart && cutsceneTime < a.attackEnd;
+}
+
+// Character: walk le 7ad makano, ba3den idle, w lama beyedrab:
+//   - elly bedrab men be3eed (Fremen, Pilot, Brute): darba kol sanya
+//   - elly melee (Atreides, Officer): beyedrab sanya w ye3mel duck sanya bel dor
+//     (el player beyedrab fel sawany el zawgeya 0, 2, 4.. w el enemy fel fardeya 1, 3, 5..
+//     fa lama wa7ed beyedrab el tany 3amel duck - w ba3den beyebdelo)
 void drawCutsceneActor(CutsceneActor a) {
     float t = cutsceneTime;
 
@@ -1980,14 +2105,101 @@ void drawCutsceneActor(CutsceneActor a) {
         anim = ANIM_WALK;
         animTime = t - a.walkStart;
     }
-    else if (a.attackStart >= 0.0f && t >= a.attackStart && t < a.attackStart + 1.0f) {
+    else if (actorAttacking(a)) {
+        // Rakam el sanya (beat) w el ksoor bas (masalan 2.3 sanya -> beat 2 w 0.3)
+        int beat = (int)(t - a.attackStart);
         anim = ANIM_ATTACK;
-        animTime = t - a.attackStart;
+        animTime = (t - a.attackStart) - beat;
+
+        // Melee: law mesh doro yedrab, ye3mel duck
+        bool myTurn = (beat % 2 == 0) == a.isPlayer;
+        if (sprites[a.sprite].muzzleDY == 0.0f && !myTurn)
+            anim = ANIM_CROUCH;
     }
 
     int frame = spriteFrame(a.sprite, anim, animTime);
-    drawSprite(a.sprite, anim, frame, actorX(a), LANE_Y[a.lane] - FEET_OFFSET,
-               a.isPlayer, 0.0f, 0.0f, CUTSCENE_SCALE);
+    drawSprite(a.sprite, anim, frame, actorX(a), a.feetY, a.isPlayer, 0.0f, 0.0f, CUTSCENE_SCALE);
+}
+
+// Talakat el characters elly bedrabo men be3eed (Fremen, Pilot, Brute) w homa beyedrabo:
+// talka kol sanya btemshy men 3ando le7ad el 3adow elly fe nafs el saff (nafs feetY)
+// w awel ma tewsalo (a5er 15% men el sanya) bteb2a farda nour soghayara 3aleh
+void drawCutsceneShot(CutsceneActor a) {
+    if (!actorAttacking(a) || sprites[a.sprite].muzzleDY == 0.0f)
+        return;
+
+    float progress = (cutsceneTime - a.attackStart) - (int)(cutsceneTime - a.attackStart);
+    float direction = a.isPlayer ? 1.0f : -1.0f;
+
+    // El masafa le7ad el 3adow (law mafeesh 3adow fe nafs el saff: 0.6)
+    float distance = 0.6f;
+    for (int i = 0; i < 10; i++) {
+        CutsceneActor target = CUTSCENE_ACTORS[i];
+
+        if (target.scene == a.scene && target.feetY == a.feetY && target.isPlayer != a.isPlayer)
+            distance = fabs(actorX(target) - actorX(a)) - 0.05f;
+    }
+
+    float x = actorX(a) + direction * (0.05f + progress * distance);
+    float y = a.feetY + sprites[a.sprite].muzzleDY * CUTSCENE_SCALE * 2.0f / 600.0f;
+
+    // Wesset: farda nour (morab3 fate7 w 7awaleeh morab3 bel lon)
+    if (progress > 0.85f) {
+        if (a.isPlayer)
+            drawRectangle(0.04f, 0.05f, x, y, 0.95f, 0.55f, 0.10f);
+        else
+            drawRectangle(0.04f, 0.05f, x, y, 0.60f, 0.20f, 0.85f);
+
+        drawRectangle(0.02f, 0.025f, x, y, 1.0f, 0.95f, 0.80f);
+        return;
+    }
+
+    if (a.isPlayer) {
+        drawRectangle(0.04f, 0.018f, x, y, 0.9f, 0.6f, 0.1f);
+        drawRectangle(0.024f, 0.008f, x, y, 1.0f, 0.95f, 0.5f);
+    }
+    else {
+        drawRectangle(0.04f, 0.018f, x, y, 0.55f, 0.1f, 0.8f);
+        drawRectangle(0.024f, 0.008f, x, y, 0.9f, 0.6f, 1.0f);
+    }
+}
+
+// Mashhad 1: el sa7ra el maftoo7a - sama, 2amarein, kseeban be3eeda, sa5r,
+// w ard raml mestaweya oddam (el characters wa2feen 3aleha) feeha 7agar w spice
+void drawDesertScene(float t) {
+    drawGradientRectangle(2.0f, 0.70f, 0.0f, 0.65f, 0.18f, 0.07f, 0.06f, 0.55f, 0.22f, 0.10f);
+    drawGradientRectangle(2.0f, 0.62f, 0.0f, -0.01f, 0.55f, 0.22f, 0.10f, 0.95f, 0.62f, 0.32f);
+    drawStars(t, 0.62f);
+
+    drawMoon(0.55f, 0.72f, 0.12f, 0.30f, 0.12f, 0.08f);
+    drawMoon(-0.60f, 0.82f, 0.045f, 0.25f, 0.10f, 0.07f);
+
+    DuneShape backDunes = {-0.05f, 0.07f, 2.3f, 1.0f, 0.03f, 5.9f, 0.4f};
+    DuneShape midDunes  = {-0.22f, 0.05f, 3.1f, 2.6f, 0.02f, 7.7f, 1.3f};
+
+    drawMesa(-0.30f, -0.08f, 0.18f, 0.20f);
+    drawMesa(0.80f, -0.10f, 0.12f, 0.13f);
+
+    drawDuneLayer(backDunes, -1.0f, 0.86f, 0.58f, 0.34f, 0.70f, 0.45f, 0.26f, 0.97f, 0.78f, 0.52f);
+    drawDuneLayer(midDunes, -1.0f, 0.78f, 0.50f, 0.29f, 0.62f, 0.38f, 0.21f, 0.90f, 0.67f, 0.42f);
+
+    // El ard el mestaweya (fate7a fo2 w agham2 ta7t) w 5att nour 3and 7arfaha
+    drawGradientRectangle(2.0f, 0.70f, 0.0f, -0.67f, 0.82f, 0.58f, 0.35f, 0.55f, 0.35f, 0.19f);
+    drawRectangle(2.0f, 0.008f, 0.0f, -0.32f, 0.95f, 0.76f, 0.50f);
+
+    // 7agar w spice beyenawar 3al ard
+    for (int i = 0; i < 10; i++) {
+        float x = -0.9f + i * 0.2f;
+        float y = -0.36f - (i % 3) * 0.05f;
+
+        drawRectangle(0.04f, 0.016f, x, y, 0.50f, 0.33f, 0.21f);
+        drawRectangle(0.024f, 0.008f, x - 0.006f, y + 0.008f, 0.66f, 0.47f, 0.31f);
+
+        float glow = spiceGlow(t, i);
+        drawRectangle(0.012f, 0.012f, x + 0.09f, y - 0.02f, 0.95f * glow, 0.50f * glow, 0.12f * glow);
+    }
+
+    drawDust(t, -0.5f, 0.1f, 24);
 }
 
 // Gomla men el cutscene: narration (fel nos) aw kalam character (b sorto w esmo)
@@ -2035,7 +2247,7 @@ void drawCutsceneLine(CutsceneLine line) {
 
     // Sahm fo2 ras elly beyetkalem (3 rectangles ad2a2 fe ba3d)
     float ax = actorX(speaker);
-    float ay = LANE_Y[speaker.lane] + 0.25f;
+    float ay = speaker.feetY + 0.39f;
     drawRectangle(0.030f, 0.012f, ax, ay + 0.012f, 1.0f, 0.82f, 0.25f);
     drawRectangle(0.018f, 0.012f, ax, ay, 1.0f, 0.82f, 0.25f);
     drawRectangle(0.006f, 0.012f, ax, ay - 0.012f, 1.0f, 0.82f, 0.25f);
@@ -2051,23 +2263,54 @@ void drawCutsceneLine(CutsceneLine line) {
     drawTextLeft(text2.substr(0, count2), -0.59f, -0.80f, 0.01f, 1.0f, 0.97f, 0.90f);
 }
 
-void drawCutscene() {
-    // El characters (lane 0 el awel 3ashan elly ta7t yeb2a oddam)
-    for (int lane = 0; lane < 3; lane++) {
-        for (int i = 0; i < 6; i++) {
-            if (CUTSCENE_ACTORS[i].lane == lane)
-                drawCutsceneActor(CUTSCENE_ACTORS[i]);
+void drawCutscene(float t) {
+    // El mashhad el delwa2ty: 0 = el sa7ra, 1 = el lanes
+    int scene = 0;
+    if (cutsceneTime >= SCENE_CHANGE_TIME)
+        scene = 1;
+
+    if (scene == 0)
+        drawDesertScene(t);
+    else
+        drawArena(t);
+
+    // El characters bta3et el mashhad da (elly wara el awel 3ashan elly oddam yeghatty 3aleh)
+    for (int row = 0; row < 3; row++) {
+        for (int i = 0; i < 10; i++) {
+            CutsceneActor a = CUTSCENE_ACTORS[i];
+            if (a.scene != scene)
+                continue;
+
+            // Saff 0 = el a3la (wara), saff 2 = el awta (oddam)
+            bool inRow = (row == 0 && a.feetY > 0.0f) ||
+                         (row == 1 && a.feetY <= 0.0f && a.feetY > -0.45f) ||
+                         (row == 2 && a.feetY <= -0.45f);
+
+            if (inRow)
+                drawCutsceneActor(a);
         }
+    }
+
+    for (int i = 0; i < 10; i++) {
+        if (CUTSCENE_ACTORS[i].scene == scene)
+            drawCutsceneShot(CUTSCENE_ACTORS[i]);
     }
 
     // Shera2et cinema sooda fo2 w ta7t
     drawRectangle(2.0f, 0.10f, 0.0f, 0.95f, 0.0f, 0.0f, 0.0f);
     drawRectangle(2.0f, 0.10f, 0.0f, -0.95f, 0.0f, 0.0f, 0.0f);
 
-    for (int i = 0; i < 6; i++) {
+    for (int i = 0; i < 7; i++) {
         if (cutsceneTime >= CUTSCENE_LINES[i].start && cutsceneTime < CUTSCENE_LINES[i].end)
             drawCutsceneLine(CUTSCENE_LINES[i]);
     }
+
+    // El curtain: rectangle eswed beyemsa7 men el shmal lel yemeen (8.6 -> 9.4 sanya)
+    // fel nos bel zabt (9.0) bey3'atty el shasha kolaha w ta7to el mashhad beyetghayar
+    // masalan 8.8 sanya -> progress 0.25 -> el nos 3and -2.2 + 0.25 * 4.4 = -1.1
+    float progress = (cutsceneTime - (SCENE_CHANGE_TIME - 0.4f)) / 0.8f;
+    if (progress > 0.0f && progress < 1.0f)
+        drawRectangle(2.2f, 2.0f, -2.2f + progress * 4.4f, 0.0f, 0.0f, 0.0f, 0.0f);
 
     drawText("SPACE TO SKIP", 0.74f, 0.95f, 0.005f, 0.75f, 0.72f, 0.68f);
 }
@@ -2115,25 +2358,25 @@ int main() {
 
         // ===== Main menu =====
         if (gameState == STATE_MENU) {
-            drawMainMenu();
+            drawMainMenu((float)glfwGetTime());
             glfwSwapBuffers(Window);
             glfwPollEvents();
             continue;
         }
 
-        drawArena();
-
-        // ===== Cutscene =====
+        // ===== Cutscene (betersem el 5alfeya bta3etha lewa7daha) =====
         if (gameState == STATE_CUTSCENE) {
             cutsceneTime += deltaTime;
             if (cutsceneTime >= CUTSCENE_LENGTH)
                 restartGame();
 
-            drawCutscene();
+            drawCutscene((float)glfwGetTime());
             glfwSwapBuffers(Window);
             glfwPollEvents();
             continue;
         }
+
+        drawArena((float)glfwGetTime());
 
         // ===== El game (wa2ef law kesebna aw 5esrna aw pause) =====
         if (gameState == STATE_PLAYING) {
