@@ -15,6 +15,10 @@
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"
 
+// Nafs el fekra lel sounds: miniaudio (header wa7ed fel project, byesha3'al mp3)
+#define MINIAUDIO_IMPLEMENTATION
+#include "miniaudio.h"
+
 // el wa2t elly 3ada men a5er frame (bel sec)
 float deltaTime = 0.0f;
 float lastFrame = 0.0f;
@@ -124,13 +128,26 @@ const int STATE_LOST     = 2;
 const int STATE_MENU     = 3;
 const int STATE_PAUSED   = 4;
 const int STATE_CUTSCENE = 5;
+const int STATE_SETTINGS = 6;
 
 int gameState = STATE_MENU;
 
 // Zarayer el menus (kolohom fel nos, el y bta3 kol wa7ed)
 float END_BUTTON_Y[2] = {-0.1f, -0.27f};
-float MAIN_MENU_BUTTON_Y[2] = {-0.05f, -0.23f};
-float PAUSE_BUTTON_Y[3] = {0.02f, -0.15f, -0.32f};
+float MAIN_MENU_BUTTON_Y[3] = {-0.05f, -0.23f, -0.41f};
+float PAUSE_BUTTON_Y[4] = {0.02f, -0.15f, -0.32f, -0.49f};
+float SETTINGS_BUTTON_Y[2] = {-0.17f, -0.34f};  // mute, back
+
+// ===== El settings (el sot) =====
+int musicVolume = 10;   // men 0 (mafeesh) le 10 (a3la sot)
+bool muted = false;
+int settingsReturnState = STATE_MENU;  // fata7na el settings men el menu wala el pause (nerga3 leh)
+
+// Zorar el - w el + w el bar elly benhom
+float VOLUME_Y = 0.02f;
+float VOLUME_MINUS_X = -0.38f;
+float VOLUME_PLUS_X = 0.38f;
+float VOLUME_BUTTON_SIZE = 0.12f;
 float BUTTON_W = 0.56f;
 float BUTTON_H = 0.12f;
 
@@ -471,6 +488,19 @@ void buyPlayers(int type);
 void placeDefense(int lane, float x);
 void restartGame();
 void startGame();
+void changeVolume(int amount);
+void toggleMute();
+
+// El mouse gowa box nosso (x, y) w 3ardo w, toolo h?
+bool insideBox(float mx, float my, float x, float y, float w, float h) {
+    return mx >= x - w / 2.0f && mx <= x + w / 2.0f && my >= y - h / 2.0f && my <= y + h / 2.0f;
+}
+
+// Nefta7 el settings w nefakar gena men fein
+void openSettings() {
+    settingsReturnState = gameState;
+    gameState = STATE_SETTINGS;
+}
 
 // Lama nedoos click
 void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
@@ -480,27 +510,46 @@ void mouseButtonCallback(GLFWwindow* window, int button, int action, int mods) {
     float mx, my;
     getMousePosition(&mx, &my);
 
-    // Fel main menu: Start aw Exit
+    // Fel main menu: Start, Settings, Exit
     if (gameState == STATE_MENU) {
-        int b = buttonAt(mx, my, MAIN_MENU_BUTTON_Y, 2);
+        int b = buttonAt(mx, my, MAIN_MENU_BUTTON_Y, 3);
         if (b == 0)
             startGame();
         if (b == 1)
+            openSettings();
+        if (b == 2)
             glfwSetWindowShouldClose(Window, true);
         return;
     }
 
-    // Fel pause: Continue, Restart, Main Menu
+    // Fel pause: Continue, Restart, Settings, Main Menu
     if (gameState == STATE_PAUSED) {
-        int b = buttonAt(mx, my, PAUSE_BUTTON_Y, 3);
+        int b = buttonAt(mx, my, PAUSE_BUTTON_Y, 4);
         if (b == 0)
             gameState = STATE_PLAYING;
         if (b == 1)
             restartGame();
-        if (b == 2) {
+        if (b == 2)
+            openSettings();
+        if (b == 3) {
             restartGame();
             gameState = STATE_MENU;
         }
+        return;
+    }
+
+    // Fel settings: -, +, Mute, Back
+    if (gameState == STATE_SETTINGS) {
+        if (insideBox(mx, my, VOLUME_MINUS_X, VOLUME_Y, VOLUME_BUTTON_SIZE, VOLUME_BUTTON_SIZE))
+            changeVolume(-1);
+        if (insideBox(mx, my, VOLUME_PLUS_X, VOLUME_Y, VOLUME_BUTTON_SIZE, VOLUME_BUTTON_SIZE))
+            changeVolume(1);
+
+        int b = buttonAt(mx, my, SETTINGS_BUTTON_Y, 2);
+        if (b == 0)
+            toggleMute();
+        if (b == 1)
+            gameState = settingsReturnState;
         return;
     }
 
@@ -548,6 +597,13 @@ void keyCallback(GLFWwindow* window, int key, int scancode, int action, int mods
     if (gameState == STATE_CUTSCENE) {
         if (key == GLFW_KEY_SPACE || key == GLFW_KEY_ENTER || key == GLFW_KEY_ESCAPE)
             restartGame();
+        return;
+    }
+
+    // Esc fel settings: nerga3 lel menu aw el pause
+    if (gameState == STATE_SETTINGS) {
+        if (key == GLFW_KEY_ESCAPE)
+            gameState = settingsReturnState;
         return;
     }
 
@@ -959,9 +1015,9 @@ const char* FONT_DIGITS[10][7] = {
     {".###.", "#...#", "#...#", ".####", "....#", "....#", ".###."},  // 9
 };
 
-// 3alamat el kalam (! . , ? ' - :)
-const char FONT_PUNCT_CHARS[7] = {'!', '.', ',', '?', '\'', '-', ':'};
-const char* FONT_PUNCT[7][7] = {
+// 3alamat el kalam (! . , ? ' - : +)
+const char FONT_PUNCT_CHARS[8] = {'!', '.', ',', '?', '\'', '-', ':', '+'};
+const char* FONT_PUNCT[8][7] = {
     {"..#..", "..#..", "..#..", "..#..", "..#..", ".....", "..#.."},  // !
     {".....", ".....", ".....", ".....", ".....", ".##..", ".##.."},  // .
     {".....", ".....", ".....", ".....", ".##..", "..#..", ".#..."},  // ,
@@ -969,6 +1025,7 @@ const char* FONT_PUNCT[7][7] = {
     {"..#..", "..#..", ".#...", ".....", ".....", ".....", "....."},  // '
     {".....", ".....", ".....", "#####", ".....", ".....", "....."},  // -
     {".....", ".##..", ".##..", ".....", ".##..", ".##..", "....."},  // :
+    {".....", "..#..", "..#..", "#####", "..#..", "..#..", "....."},  // +
 };
 
 // 7agm morab3 el 7arf bel pixels (rakam sa7ee7 3ashan el 7oroof tetla3 7adda)
@@ -1013,7 +1070,7 @@ void drawTextLeft(std::string text, float leftX, float y, float pixel,
         if (c >= '0' && c <= '9')
             rows = FONT_DIGITS[c - '0'];
 
-        for (int k = 0; k < 7; k++) {
+        for (int k = 0; k < 8; k++) {
             if (c == FONT_PUNCT_CHARS[k])
                 rows = FONT_PUNCT[k];
         }
@@ -1762,11 +1819,59 @@ void drawEndScreen() {
 }
 
 void drawPauseMenu() {
-    std::string labels[3] = {"CONTINUE", "RESTART", "MAIN MENU"};
+    std::string labels[4] = {"CONTINUE", "RESTART", "SETTINGS", "MAIN MENU"};
 
-    drawPanel(0.8f, 0.92f, 0.0f, 0.0f, 0.95f, 0.72f, 0.28f);
+    drawPanel(0.8f, 1.12f, 0.0f, -0.08f, 0.95f, 0.72f, 0.28f);
     drawTextShadow("PAUSED", 0.0f, 0.27f, 0.015f, 1.0f, 0.78f, 0.30f);
-    drawButtons(labels, PAUSE_BUTTON_Y, 3);
+    drawButtons(labels, PAUSE_BUTTON_Y, 4);
+}
+
+// Zorar soghayar morab3 (lel - w el +) - nafs shakl zarayer el menu
+void drawSmallButton(std::string label, float x, float y) {
+    float mx, my;
+    getMousePosition(&mx, &my);
+
+    float br = 0.62f, bg = 0.44f, bb = 0.28f;
+    float ir = 0.40f, ig = 0.26f, ib = 0.16f;
+    if (insideBox(mx, my, x, y, VOLUME_BUTTON_SIZE, VOLUME_BUTTON_SIZE)) {
+        br = 1.0f;  bg = 0.85f; bb = 0.45f;
+        ir = 0.95f; ig = 0.55f; ib = 0.18f;
+    }
+
+    float size = VOLUME_BUTTON_SIZE;
+    drawRectangle(size + 0.02f, size + 0.025f, x, y, 0.12f, 0.07f, 0.04f);
+    drawRectangle(size, size, x, y, br, bg, bb);
+    drawRectangle(size - 0.016f, size - 0.02f, x, y, ir, ig, ib);
+
+    drawTextShadow(label, x, y, 0.01f, 1.0f, 0.95f, 0.85f);
+}
+
+// Shashet el settings: - [bar 10 morab3at] +, w zorar mute, w back
+// el bar: kol morab3 = 10% men el sot (bortoo2any = shaghal, ramady = mute, gham2 = fady)
+// masalan volume 7: awel 7 morab3at bortoo2any w el 3 el ba2yeen gham2een
+void drawSettings() {
+    drawPanel(1.0f, 0.96f, 0.0f, 0.02f, 0.95f, 0.72f, 0.28f);
+    drawTextShadow("SETTINGS", 0.0f, 0.36f, 0.015f, 1.0f, 0.78f, 0.30f);
+    drawText("MUSIC VOLUME", 0.0f, 0.19f, 0.0075f, 1.0f, 0.92f, 0.78f);
+
+    drawSmallButton("-", VOLUME_MINUS_X, VOLUME_Y);
+    drawSmallButton("+", VOLUME_PLUS_X, VOLUME_Y);
+
+    for (int i = 0; i < 10; i++) {
+        float x = -0.27f + i * 0.06f;
+
+        if (i >= musicVolume)
+            drawRectangle(0.05f, 0.10f, x, VOLUME_Y, 0.15f, 0.09f, 0.05f);
+        else if (muted)
+            drawRectangle(0.05f, 0.10f, x, VOLUME_Y, 0.50f, 0.50f, 0.50f);
+        else
+            drawGradientRectangle(0.05f, 0.10f, x, VOLUME_Y, 1.0f, 0.80f, 0.30f, 0.90f, 0.50f, 0.12f);
+    }
+
+    std::string labels[2] = {"MUTE", "BACK"};
+    if (muted)
+        labels[0] = "UNMUTE";
+    drawButtons(labels, SETTINGS_BUTTON_Y, 2);
 }
 
 // ==========================================
@@ -2035,6 +2140,16 @@ void drawArena(float t) {
 // El main menu: ghoroob 3ala Arrakis - sama gradient, 2amarein, negoom, 3 soffof kseeban
 // na3ma, sa5r kbeer 3al yemeen, mo3askar Atreides soghayar (wind traps) 3al shmal,
 // spice beyenawar, w raml tayer
+// Sa5ra sooda 2orayyeba fel rokn (betetla3 zay soora oddam el manzar):
+// gesm, ras asghar, 2emam mosallasa, w 5att nour 3al shmal
+void drawRockOutcrop(float x, float baseY, float s) {
+    drawRectangle(0.30f * s, 0.16f * s, x, baseY + 0.08f * s, 0.24f, 0.14f, 0.09f);
+    drawRectangle(0.18f * s, 0.10f * s, x - 0.03f * s, baseY + 0.21f * s, 0.24f, 0.14f, 0.09f);
+    drawTriangle(x - 0.12f * s, baseY + 0.26f * s, x + 0.06f * s, baseY + 0.26f * s, x - 0.05f * s, baseY + 0.33f * s, 0.24f, 0.14f, 0.09f);
+    drawTriangle(x + 0.06f * s, baseY + 0.16f * s, x + 0.15f * s, baseY + 0.16f * s, x + 0.08f * s, baseY + 0.22f * s, 0.24f, 0.14f, 0.09f);
+    drawRectangle(0.02f * s, 0.26f * s, x - 0.11f * s, baseY + 0.13f * s, 0.40f, 0.25f, 0.16f);
+}
+
 void drawMainMenu(float t) {
     drawGradientRectangle(2.0f, 0.70f, 0.0f, 0.65f, 0.18f, 0.07f, 0.06f, 0.55f, 0.22f, 0.10f);
     drawGradientRectangle(2.0f, 0.62f, 0.0f, -0.01f, 0.55f, 0.22f, 0.10f, 0.95f, 0.62f, 0.32f);
@@ -2043,10 +2158,20 @@ void drawMainMenu(float t) {
     drawMoon(0.62f, 0.75f, 0.14f, 0.30f, 0.12f, 0.08f);
     drawMoon(-0.68f, 0.82f, 0.05f, 0.25f, 0.10f, 0.07f);
 
-    // El kseeban el be3eeda, w 3aleha sa5r kbeer 3al yemeen w soghayar 3al shmal
-    drawMesa(0.72f, -0.26f, 0.20f, 0.26f);
-    drawMesa(0.52f, -0.24f, 0.10f, 0.14f);
-    drawMesa(-0.40f, -0.22f, 0.08f, 0.08f);
+    // Nour el ghoroob 3and el ofo2 (gradient ad2a2 fo2 le afta7 ta7t)
+    drawGradientRectangle(2.0f, 0.25f, 0.0f, -0.18f, 0.78f, 0.45f, 0.23f, 1.0f, 0.78f, 0.48f);
+
+    // El sa5r 3al kseeban el be3eeda: el 2a3da bta3to 3ala ertefa3 el kaseeb bel zabt
+    // (duneTop) w nazla shwaya gowah 3ashan mayeb2ash tayer
+    // masalan 3and x = -0.40 el kaseeb 3and -0.256 -> el sa5ra tebda2 men -0.28
+    float bigMesaY   = duneTop(DUNES[DUNE_MENU_BACK], 0.72f) - 0.03f;
+    float smallMesaY = duneTop(DUNES[DUNE_MENU_BACK], 0.52f) - 0.03f;
+    float leftMesaY  = duneTop(DUNES[DUNE_MENU_BACK], -0.40f) - 0.025f;
+
+    drawMesa(0.72f, bigMesaY, 0.20f, 0.29f);
+    drawMesa(0.52f, smallMesaY, 0.10f, 0.17f);
+    drawMesa(-0.40f, leftMesaY, 0.08f, 0.105f);
+
 
     drawDuneLayer(DUNE_MENU_BACK,
                   0.86f, 0.58f, 0.34f,  0.70f, 0.45f, 0.26f,  0.97f, 0.78f, 0.52f);
@@ -2055,6 +2180,7 @@ void drawMainMenu(float t) {
     drawWindTrap(-0.72f, -0.47f, 1.6f);
     drawWindTrap(-0.62f, -0.44f, 2.0f);
     drawWindTrap(-0.52f, -0.46f, 1.4f);
+
 
     drawDuneLayer(DUNE_MENU_MID,
                   0.76f, 0.48f, 0.27f,  0.58f, 0.35f, 0.20f,  0.88f, 0.64f, 0.40f);
@@ -2071,15 +2197,31 @@ void drawMainMenu(float t) {
         drawRectangle(0.006f, 0.006f, x, y, glow, 0.85f * glow, 0.50f * glow);
     }
 
+    // Sa5r gham2 fel roknein ta7t (beyeddy 3om2 lel manzar)
+    drawRockOutcrop(-0.88f, -1.0f, 1.0f);
+    drawRockOutcrop(0.88f, -1.0f, 0.8f);
+
     drawDust(t, -0.95f, 0.1f, 30);
+
+    // Law fat7een el settings men el menu: el settings badal el esm w el zarayer
+    if (gameState == STATE_SETTINGS) {
+        drawSettings();
+        return;
+    }
 
     drawTextShadow("ARRAKIS DEFENSE", 0.0f, 0.46f, 0.015f, 1.0f, 0.78f, 0.30f);
     drawTextShadow("THE SPICE MUST FLOW", 0.0f, 0.27f, 0.0075f, 1.0f, 0.92f, 0.78f);
 
-    std::string labels[2] = {"START", "EXIT"};
-    drawButtons(labels, MAIN_MENU_BUTTON_Y, 2);
+    // 5att dahaby ta7t el esm: 2 5otoot w ma3een fel nos (2 triangles)
+    drawRectangle(0.30f, 0.006f, -0.21f, 0.18f, 0.95f, 0.75f, 0.30f);
+    drawRectangle(0.30f, 0.006f, 0.21f, 0.18f, 0.95f, 0.75f, 0.30f);
+    drawTriangle(-0.03f, 0.18f, 0.03f, 0.18f, 0.0f, 0.21f, 0.95f, 0.75f, 0.30f);
+    drawTriangle(-0.03f, 0.18f, 0.03f, 0.18f, 0.0f, 0.15f, 0.95f, 0.75f, 0.30f);
 
-    drawTextShadow("ESC TO PAUSE", 0.0f, -0.4f, 0.005f, 1.0f, 0.92f, 0.78f);
+    std::string labels[3] = {"START", "SETTINGS", "EXIT"};
+    drawButtons(labels, MAIN_MENU_BUTTON_Y, 3);
+
+    drawTextShadow("ESC TO PAUSE", 0.0f, -0.58f, 0.005f, 1.0f, 0.92f, 0.78f);
 }
 
 // ==========================================
@@ -2397,6 +2539,128 @@ void drawCutscene(float t) {
 }
 
 // ==========================================
+// El sounds (music le kol 7ala fel game)
+// ==========================================
+
+const int MUSIC_MENU  = 0;  // fel main menu (betlef)
+const int MUSIC_FIGHT = 1;  // men awel ma nedoos START (el cutscene w el game) - betlef
+const int MUSIC_WIN   = 2;  // lama nekseb (marra wa7da)
+const int MUSIC_LOSE  = 3;  // lama ne5sar (marra wa7da)
+const int MUSIC_COUNT = 4;
+
+const char* MUSIC_FILES[MUSIC_COUNT] = {
+    "assets/sounds/menu.mp3",
+    "assets/sounds/fight.mp3",
+    "assets/sounds/win.mp3",
+    "assets/sounds/lose.mp3"
+};
+
+bool MUSIC_LOOP[MUSIC_COUNT] = {true, true, false, false};
+
+ma_engine audioEngine;
+ma_sound music[MUSIC_COUNT];
+bool musicLoaded[MUSIC_COUNT] = {false, false, false, false};
+bool audioReady = false;
+int currentMusic = -1;  // elly shaghala delwa2ty (-1 = mafeesh)
+
+// Nefta7 el sound card w nload el 4 files (nafs el prefixes bta3et el sprites)
+// law mafeesh sound card aw file mesh mawgood el game yeshtaghal 3adi bas men gher sot
+void loadSounds() {
+    if (ma_engine_init(nullptr, &audioEngine) != MA_SUCCESS) {
+        std::cerr << "Could not start audio\n";
+        return;
+    }
+    audioReady = true;
+
+    const char* prefixes[] = { "", "../", "../../", "../../../" };
+
+    for (int i = 0; i < MUSIC_COUNT; i++) {
+        for (int k = 0; k < 4 && !musicLoaded[i]; k++) {
+            std::string path = std::string(prefixes[k]) + MUSIC_FILES[i];
+            if (ma_sound_init_from_file(&audioEngine, path.c_str(), MA_SOUND_FLAG_STREAM,
+                                        nullptr, nullptr, &music[i]) == MA_SUCCESS)
+                musicLoaded[i] = true;
+        }
+
+        if (!musicLoaded[i]) {
+            std::cerr << "Could not load " << MUSIC_FILES[i] << '\n';
+            continue;
+        }
+
+        ma_sound_set_looping(&music[i], MUSIC_LOOP[i]);
+    }
+}
+
+// Kol frame: anhy music el mafrood teshtaghal 7asab 7alet el game
+// law et8ayaret: nwa2af el adeema w nebda2 el gdeeda men el awel
+// masalan kesebna: el fight bto2af w el win tebda2 men sanya 0
+void updateMusic() {
+    if (!audioReady)
+        return;
+
+    int want = MUSIC_FIGHT;
+    if (gameState == STATE_MENU)
+        want = MUSIC_MENU;
+    if (gameState == STATE_SETTINGS && settingsReturnState == STATE_MENU)
+        want = MUSIC_MENU;
+    if (gameState == STATE_WON)
+        want = MUSIC_WIN;
+    if (gameState == STATE_LOST)
+        want = MUSIC_LOSE;
+
+    if (want == currentMusic)
+        return;
+
+    if (currentMusic != -1 && musicLoaded[currentMusic])
+        ma_sound_stop(&music[currentMusic]);
+
+    currentMusic = want;
+
+    if (musicLoaded[want]) {
+        ma_sound_seek_to_pcm_frame(&music[want], 0);
+        ma_sound_start(&music[want]);
+    }
+}
+
+// Nedy el sot lel engine: law mute = 0, w law la2 = volume / 10
+// masalan volume 7 -> 0.7 (70% men el sot el asly)
+void applyVolume() {
+    if (!audioReady)
+        return;
+
+    if (muted)
+        ma_engine_set_volume(&audioEngine, 0.0f);
+    else
+        ma_engine_set_volume(&audioEngine, musicVolume / 10.0f);
+}
+
+// El - w el + (mayenzelsh ta7t 0 wala yetla3 fo2 10)
+void changeVolume(int amount) {
+    musicVolume += amount;
+    if (musicVolume < 0)
+        musicVolume = 0;
+    if (musicVolume > 10)
+        musicVolume = 10;
+
+    applyVolume();
+}
+
+void toggleMute() {
+    muted = !muted;
+    applyVolume();
+}
+
+void cleanupSounds() {
+    for (int i = 0; i < MUSIC_COUNT; i++) {
+        if (musicLoaded[i])
+            ma_sound_uninit(&music[i]);
+    }
+
+    if (audioReady)
+        ma_engine_uninit(&audioEngine);
+}
+
+// ==========================================
 // Main
 // ==========================================
 
@@ -2421,10 +2685,13 @@ int main() {
     for (int i = 0; i < SPRITE_COUNT; i++)
         loadSprite(sprites[i]);
 
+    loadSounds();
+
     lastFrame = (float)glfwGetTime();
 
     while (!glfwWindowShouldClose(Window)) {
         updateDeltaTime();
+        updateMusic();
 
         // 7agm el shasha el 7a2e2y kol frame (law el window et8ayar aw el laptop 3amel scaling)
         glfwGetFramebufferSize(Window, &width, &height);
@@ -2435,8 +2702,8 @@ int main() {
 
         glUseProgram(shaderProgram);
 
-        // ===== Main menu =====
-        if (gameState == STATE_MENU) {
+        // ===== Main menu (w el settings law fata7naha men el menu) =====
+        if (gameState == STATE_MENU || (gameState == STATE_SETTINGS && settingsReturnState == STATE_MENU)) {
             drawMainMenu((float)glfwGetTime());
             glfwSwapBuffers(Window);
             glfwPollEvents();
@@ -2502,10 +2769,14 @@ int main() {
         if (gameState == STATE_PAUSED)
             drawPauseMenu();
 
+        if (gameState == STATE_SETTINGS)
+            drawSettings();
+
         glfwSwapBuffers(Window);
         glfwPollEvents();
     }
 
+    cleanupSounds();
     cleanup();
     return 0;
 }
